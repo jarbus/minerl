@@ -32,16 +32,7 @@ class Model(nn.Module):
         self.l2 = nn.Linear(200, output_size)
         self.r2 = nn.ReLU()
 
-        self.attack = nn.Linear(output_size, 2)
-        self.back = nn.Linear(output_size, 2)
-        self.camera = nn.Linear(output_size, 2)
-        self.fwd = nn.Linear(output_size, 2)
-        self.jump = nn.Linear(output_size, 2)
-        self.left = nn.Linear(output_size, 2)
-        self.place = nn.Linear(output_size, 2)
-        self.right = nn.Linear(output_size, 2)
-        self.sneak = nn.Linear(output_size, 2)
-        self.sprint = nn.Linear(output_size, 2)
+        self.out = nn.Linear(output_size, 9)
 
         # self.classifier = nn.Conv2d(128, 10, 1)
         # self.avgpool = nn.AvgPool2d(6, 6)
@@ -55,22 +46,7 @@ class Model(nn.Module):
         full_embed = self.r1(full_embed)
         full_embed = self.l2(full_embed)
         full_embed = self.r2(full_embed)
-        out = torch.cat(
-            (
-                self.attack(full_embed),
-                self.back(full_embed),
-                torch.clamp(self.camera(full_embed), min=-180, max=180),
-                self.fwd(full_embed),
-                self.jump(full_embed),
-                self.left(full_embed),
-                self.right(full_embed),
-                self.place(full_embed),
-                self.sneak(full_embed),
-                self.sprint(full_embed),
-            ),
-            dim=1,
-        )
-        return out
+        return self.out(full_embed)
 
     def sample(self, pov, feats, evaluation=False):
         pov = torch.reshape(pov, (1,) + pov.size())

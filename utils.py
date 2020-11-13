@@ -6,6 +6,11 @@ import random
 
 from pdb import set_trace as T
 
+CAMERA_OPTIONS = np.array([[-90.0, 0.0],
+                    [90.0,0.0],
+                    [0.0, 0.0],
+                    [0,-45],
+                    [0,45]])
 
 # Shorthand to put sequences and batches on same axis
 def expand(tensor):
@@ -25,17 +30,18 @@ def contract(tensor, batch_size, seq_len):
 
 
 # distribution is of (batch_size, seq_len, distribution)
-def sample(distribution, evaluation=False):
+def sample(distribution, epsilon=0.01,evaluation=False):
 
-    if evaluation:
+    if evaluation or random.random()<epsilon:
         return torch.argmax(distribution)
-    distribution = torch.nn.Softmax(dim=-1)(distribution)
-    sum_so_far = 0
-    r = random.random()
-    for idx, prob in enumerate(distribution):
-        sum_so_far += prob
-        if r <= sum_so_far:
-            return idx
+    return random.randint(0,len(distribution)-1)
+    #distribution = torch.nn.Softmax(dim=-1)(distribution)
+    #sum_so_far = 0
+    #r = random.random()
+    #for idx, prob in enumerate(distribution):
+    #    sum_so_far += prob
+    #    if r <= sum_so_far:
+    #        return idx
 
 
 def batch_sample(array, evaluation=False):
@@ -75,41 +81,66 @@ def Navigatev0_action_to_tensor(act: OrderedDict):
     PLACE_OPTIONS = {"none": 0, "dirt": 1}
     # ONE_HOT = {0: np.array([1, 0]), 1: np.array([0, 1])}
 
-    place = np.zeros((batch_size, seq_len), dtype=int)
+    options = np.array([[-90.0, 0.0],
+                        [90.0,0.0],
+                        [0.0, 0.0],
+                        [0,-45],
+                        [0,45]])
+
+    place = np.zeros((batch_size, seq_len, 2), dtype=int)
+    attack = np.zeros((batch_size, seq_len, 2), dtype=int)
+    forward = np.zeros((batch_size, seq_len, 2), dtype=int)
+    jump = np.zeros((batch_size, seq_len, 2), dtype=int)
+    camera = np.zeros((batch_size, seq_len,5), dtype=int)
     for b in range(batch_size):
         for s in range(seq_len):
+            c = act["camera"]
+            if c[0] < -10 and abs(c[0]) >= abs(c[1]):
+                camera[b,s] = options[0]
+            elif c[0] > 10 and abs(c[0]) >= abs(c[1]):
+                camera[b,s] = options[1]
+            elif c[1] < -10 and abs(c[1]) >= abs(c[0]):
+                camera[b,s] = options[3]
+            elif c[1] > 10 and abs(c[1]) >= abs(c[0]):
+                camera[b,s] = options[4]
+            else:
+                camera[b,s] = options[2]
             place[b, s] = PLACE_OPTIONS[act["place"][b, s]]
+
+    act["camera"] = camera
     act["place"] = place
     return act
 
 
-def action_tensor_to_Navigatev0(action_vec_torch, evaluation=False):
+def action_tensor_to_Navigatev0(action_vec_torch, epsilon=0.01, evaluation=False):
     """
     Dict({
         "attack": "Discrete(2)",
-        "back": "Discrete(2)",
         "camera": "Box(low=-180.0, high=180.0, shape=(2,))",
         "forward": "Discrete(2)",
         "jump": "Discrete(2)",
-        "left": "Discrete(2)",
         "place": "Enum(dirt,none)",
-        "right": "Discrete(2)",
-        "sneak": "Discrete(2)",
-        "sprint": "Discrete(2)"
     })
     """
-    action_vec = action_vec_torch.detach().numpy()[0]
+    action_vec = action_vec_torch.detach()
+
     action_dict = OrderedDict()
-    action_dict["attack"] = batch_sample(action_vec[:, :, 0:2], evaluation)
-    action_dict["back"] = batch_sample(action_vec[:, :, 2:4], evaluation)
-    action_dict["camera"] = action_vec[:, :, 4:6]
-    action_dict["forward"] = batch_sample(action_vec[:, :, 6:8], evaluation)
-    action_dict["jump"] = batch_sample(action_vec[:, :, 8:10], evaluation)
-    action_dict["left"] = batch_sample(action_vec[:, :, 10:12], evaluation)
-    action_dict["place"] = batch_sample(action_vec[:, :, 12:14], evaluation)
-    action_dict["right"] = batch_sample(action_vec[:, :, 14:16], evaluation)
-    action_dict["sneak"] = batch_sample(action_vec[:, :, 16:18], evaluation)
-    action_dict["sprint"] = batch_sample(action_vec[:, :, 18:20], evaluation)
+    action_dict["attack"] = 0
+    action_dict["camera"] = np.zeros(2,dtype=np.int8)
+    action_dict["forward"] = 0
+    action_dict["jump"] = 0
+    action_dict["place"] = 0
+    action_dict["back"] = 0
+    action_dict["right"] = 0
+    action_dict["left"] = 0
+    action_dict["sneak"] = 0
+    action_dict["sprint"] = 0
+
+    idx = sample(action_vec, epsilon=epsilon, evaluation=evaluation)
+    if 1 <= idx <= 5:
+        action_dict["camera"] = CAMERA_OPTIONS[idx-1]
+    else:
+        action_dict[["attack",0,0,0,0,0,"forward","jump","place"][idx]] = 1
     return action_dict
 
 
