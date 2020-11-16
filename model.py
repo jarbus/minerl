@@ -7,7 +7,15 @@ from torchsummary import summary
 
 
 class Model(nn.Module):
-    def __init__(self, input_size, output_size):
+    """Model to approximate Q values.
+
+    Input
+    -----
+        pov: batch_size x 3 x 64 x 64 POV
+        input_size
+
+    """
+    def __init__(self):
         super(Model, self).__init__()
         self.image_embed = nn.Sequential(
             nn.Conv2d(3, 16, 5),
@@ -25,46 +33,23 @@ class Model(nn.Module):
             nn.Flatten(),
             nn.Linear(864, 100),
         )
-        self.feat_embed = nn.Linear(input_size, 20)
+        #self.feat_embed = nn.Linear(2, 20)
         self.dropout = nn.Dropout(p=0.05)
-        self.l1 = nn.Linear(100 + 20, 200)
+        self.l1 = nn.Linear(100 + 2, 200)
         self.r1 = nn.ReLU()
-        self.l2 = nn.Linear(200, output_size)
+        self.l2 = nn.Linear(200, 100)
         self.r2 = nn.ReLU()
+        self.out = nn.Linear(100, 9)
 
-        self.out = nn.Linear(output_size, 9)
 
-        # self.classifier = nn.Conv2d(128, 10, 1)
-        # self.avgpool = nn.AvgPool2d(6, 6)
-        # self.dropout = nn.Dropout(0.5)
-
-    def forward(self, pov, inputs):
+    def forward(self, pov, feats):
         pov = self.image_embed(pov)
-        feats = self.feat_embed(inputs)
         dropout = self.dropout(torch.cat((pov, feats), dim=1))
         full_embed = self.l1(dropout)
         full_embed = self.r1(full_embed)
         full_embed = self.l2(full_embed)
         full_embed = self.r2(full_embed)
         return self.out(full_embed)
-
-    def sample(self, pov, feats, evaluation=False):
-        pov = torch.reshape(pov, (1,) + pov.size())
-        feats = torch.reshape(feats, (1,) + feats.size())
-        outputs = self.forward(pov, feats)
-        act = OrderedDict()
-        act["attack"] = sample(outputs[0, 0:2], evaluation=evaluation)
-        act["back"] = sample(outputs[0, 2:4], evaluation=evaluation)
-        act["camera"] = outputs[0, 4:6].detach().numpy()
-        act["forward"] = sample(outputs[0, 6:8], evaluation=evaluation)
-        act["jump"] = sample(outputs[0, 8:10], evaluation=evaluation)
-        act["left"] = sample(outputs[0, 10:12], evaluation=evaluation)
-        act["right"] = sample(outputs[0, 12:14], evaluation=evaluation)
-        act["place"] = sample(outputs[0, 14:16], evaluation=evaluation)
-        act["sneak"] = sample(outputs[0, 16:18], evaluation=evaluation)
-        act["sprint"] = sample(outputs[0, 18:20], evaluation=evaluation)
-
-        return act
 
 
 if __name__ == "__main__":
