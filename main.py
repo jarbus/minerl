@@ -12,11 +12,13 @@ LR = 0.001
 SEQ_LEN = 1
 BATCH_SIZE = 64
 MODEL_PATH = "models/model.pt"
-# Sample some data from the dataset!
 parser = argparse.ArgumentParser()
 parser.add_argument("--train",action="store_true",help="Trains new model before evaluation")
 args = parser.parse_args()
 
+########################
+# TRAIN ON EXPERT DATA #
+########################
 if args.train:
     model = Model()
     cross_ent = nn.CrossEntropyLoss()
@@ -60,23 +62,34 @@ if args.train:
     torch.save(model.state_dict(),MODEL_PATH)
     print("Training counter:",output_history)
 
+# Loads previously trained model
 else:
     model = Model()
     model = model.load_state_dict(torch.load(MODEL_PATH))
     model.eval()
+
+
+################
+# SIMULATION
+################
 
 env = gym.make("MineRLNavigateDense-v0")
 
 obs = env.reset()
 done = False
 net_reward = 0
-
 it = 0
+
+# Counts actions taken
+# Doesn't affect training
 output_history=Counter()
+
+# Evaluates on environment
 while not done:
 
     pov, feats = Navigatev0_obs_to_tensor(obs)
     # Move channels into proper spot
+    # (64,64,3) -> (3,64,64)
     pov = torch.transpose(pov, 0, 2)
     # Turn into batch
     pov = pov.expand((1,) + pov.size())
@@ -84,8 +97,8 @@ while not done:
 
     action_tensor = model.forward(pov, feats)
     output_history[torch.argmax(action_tensor).item()] += 1
-    action_tensor[:,3] = 0.0
-    # Add fake sequence
+
+    # Add fake sequence dimension
     action_tensor = action_tensor.expand((1,) + action_tensor.size())
 
 
