@@ -30,11 +30,34 @@ def contract(tensor, batch_size, seq_len):
 
 
 # distribution is of (batch_size, seq_len, distribution)
-def sample(distribution, epsilon=0.01,evaluation=False):
+def sample(action_vector, epsilon=0.01,evaluation=False):
+    sample = torch.zeros(9,dtype=torch.int8)
+    if evaluation:
+        sample[0] = round(action_vector[0].item())
+        sample[torch.argmax(action_vector[1:6])] = 1
+        sample[6] = round(action_vector[6].item())
+        sample[7] = round(action_vector[7].item())
+        sample[8] = round(action_vector[8].item())
+    elif random.random() < epsilon:
+        sample[0] = random.randint(0,1)
+        sample[random.randint(1,5)] = 1
+        sample[6] = random.randint(0,1)
+        sample[7] = random.randint(0,1)
+        sample[8] = random.randint(0,1)
+    else:
+        sample[0] = 1 if random.random() < action_vector[0] else 0
+        camera_thresh = random.random()
+        sum_ = 0
+        for i in range(1,6):
+            sum_ += action_vector[i]
+            if sum_ < random.random():
+                sample[i] = 1
+                break
+        sample[6] = 1 if random.random() < action_vector[6] else 6
+        sample[7] = 1 if random.random() < action_vector[7] else 7
+        sample[8] = 1 if random.random() < action_vector[8] else 8
 
-    if evaluation or random.random()>epsilon:
-        return torch.argmax(distribution)
-    return random.randint(0,len(distribution)-1)
+    return sample
 
 def batch_sample(array, evaluation=False):
     batch_size, seq_len, dist_size = array.shape
@@ -111,11 +134,10 @@ def action_tensor_to_Navigatev0(action_vec_torch, epsilon=0.01, evaluation=False
     action_dict["sneak"] = 0
     action_dict["sprint"] = 0
 
-    idx = sample(action_vec, epsilon=epsilon, evaluation=evaluation)
-    if 1 <= idx <= 5:
-        action_dict["camera"] = CAMERA_OPTIONS[idx-1]
-    else:
-        action_dict[["attack",0,0,0,0,0,"forward","jump","place"][idx]] = 1
+    actions = sample(action_vec, epsilon=epsilon, evaluation=evaluation)
+    action_dict["camera"] = CAMERA_OPTIONS[torch.argmax(actions[1:6])-1]
+    for key, idx in zip(["attack","forward","jump","place"],  [0,6,7,8]):
+        action_dict[key] = actions[idx].item()
     return action_dict
 
 def batch_action_tensor_to_Navigatev0(action_vec_torch, epsilon=0.01, evaluation=False):

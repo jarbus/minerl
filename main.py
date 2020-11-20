@@ -70,7 +70,7 @@ if args.train:
 # Loads previously trained model
 else:
     model = Model()
-    model = model.load_state_dict(torch.load(MODEL_PATH))
+    model.load_state_dict(torch.load(MODEL_PATH))
     model.eval()
 
 
@@ -104,8 +104,9 @@ while not done:
     output_history[torch.argmax(action_tensor).item()] += 1
 
     # Add fake sequence dimension
-    action_tensor = action_tensor.expand((1,) + action_tensor.size())
-    action_dict = action_tensor_to_Navigatev0(action_tensor, evaluation=True)
+    # action_tensor = action_tensor.expand((1,) + action_tensor.size())
+
+    action_dict = action_tensor_to_Navigatev0(action_tensor[0], evaluation=True)
 
     obs, reward, done, info = env.step(action_dict)
     net_reward += reward
