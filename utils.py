@@ -32,7 +32,7 @@ def contract(tensor, batch_size, seq_len):
 # distribution is of (batch_size, seq_len, distribution)
 def sample(distribution, epsilon=0.01,evaluation=False):
 
-    if evaluation or random.random()<epsilon:
+    if evaluation or random.random()>epsilon:
         return torch.argmax(distribution)
     return random.randint(0,len(distribution)-1)
 
@@ -74,6 +74,9 @@ def Navigatev0_action_to_tensor(act: OrderedDict):
     PLACE_OPTIONS = {"none": 0, "dirt": 1}
     # ONE_HOT = {0: np.array([1, 0]), 1: np.array([0, 1])}
     out = torch.zeros((batch_size,seq_len,9))
+    out[:,:,0] = torch.tensor(act["attack"])
+    out[:,:,6] = torch.tensor(act["forward"])
+    out[:,:,7] = torch.tensor(act["jump"])
 
     for b in range(batch_size):
         for s in range(seq_len):

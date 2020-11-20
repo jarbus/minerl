@@ -1,3 +1,4 @@
+#TODO deep q networks from demonstrations
 import sys
 import gym
 import minerl
@@ -21,6 +22,7 @@ args = parser.parse_args()
 ########################
 if args.train:
     model = Model()
+    bce = nn.BCELoss()
     cross_ent = nn.CrossEntropyLoss()
     mse = nn.MSELoss()
     mlsml = nn.MultiLabelSoftMarginLoss()
@@ -34,8 +36,7 @@ if args.train:
     output_history=Counter()
 
     for s, a, r, sp, d in data.batch_iter(
-        num_epochs=1, seq_len=SEQ_LEN, batch_size=BATCH_SIZE
-    ):
+        num_epochs=1, seq_len=SEQ_LEN, batch_size=BATCH_SIZE):
         # converts state dictionary to tensor information
         pov_tensor, feat_tensor = Navigatev0_obs_to_tensor(s)
         pov_tensor, feat_tensor = (
@@ -50,7 +51,11 @@ if args.train:
         for i in range(outputs.size(0)):
             output_history[torch.argmax(outputs[i]).item()] += 1
 
-        loss = mlsml(outputs, action_tensor)
+        loss = bce(outputs[:,0], action_tensor[:,0])
+        loss += cross_ent(outputs[:,1:6], torch.argmax(action_tensor[:,1:6],dim=1))
+        loss += bce(outputs[:,6], action_tensor[:,6])
+        loss += bce(outputs[:,7], action_tensor[:,7])
+        loss += bce(outputs[:,8], action_tensor[:,8])
         if it % 100 == 0:
             print(f"Iteration {it} Loss: {loss.item()}")
         loss.backward()
@@ -95,14 +100,13 @@ while not done:
     pov = pov.expand((1,) + pov.size())
     feats = feats.expand((1,) + feats.size())
 
-    action_tensor = model.forward(pov, feats)
+    action_tensor = model(pov, feats)
     output_history[torch.argmax(action_tensor).item()] += 1
 
     # Add fake sequence dimension
     action_tensor = action_tensor.expand((1,) + action_tensor.size())
-
-
     action_dict = action_tensor_to_Navigatev0(action_tensor, evaluation=True)
+
     obs, reward, done, info = env.step(action_dict)
     net_reward += reward
     if net_reward > 0:

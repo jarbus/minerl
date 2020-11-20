@@ -20,26 +20,30 @@ class Model(nn.Module):
         self.image_embed = nn.Sequential(
             nn.Conv2d(3, 16, 5),
             nn.MaxPool2d(2, 2),
-            nn.ReLU(True),
+            nn.LeakyReLU(True),
             nn.BatchNorm2d(16),
             nn.Conv2d(16, 24, 3),
             nn.MaxPool2d(2, 2),
-            nn.ReLU(True),
+            nn.LeakyReLU(True),
             nn.BatchNorm2d(24),
             nn.Conv2d(24, 24, 3),
             nn.MaxPool2d(2, 2),
-            nn.ReLU(True),
+            nn.LeakyReLU(True),
             nn.BatchNorm2d(24),
             nn.Flatten(),
             nn.Linear(864, 100),
         )
-        #self.feat_embed = nn.Linear(2, 20)
         self.dropout = nn.Dropout(p=0.05)
         self.l1 = nn.Linear(100 + 2, 200)
-        self.r1 = nn.ReLU()
+        self.r1 = nn.LeakyReLU()
         self.l2 = nn.Linear(200, 100)
-        self.r2 = nn.ReLU()
+        self.r2 = nn.LeakyReLU()
         self.out = nn.Linear(100, 9)
+        self.attack  = nn.Sigmoid()
+        self.camera  = nn.Softmax(dim=1)
+        self.forward_ = nn.Sigmoid()
+        self.jump    = nn.Sigmoid()
+        self.place   = nn.Sigmoid()
 
 
     def forward(self, pov, feats):
@@ -49,7 +53,9 @@ class Model(nn.Module):
         full_embed = self.r1(full_embed)
         full_embed = self.l2(full_embed)
         full_embed = self.r2(full_embed)
-        return self.out(full_embed)
+        out        = self.out(full_embed)
+        probs = self.attack(out[:,0:1]), out[:,1:6], self.forward_(out[:,6:7]), self.jump(out[:,7:8]), self.place(out[:,8:])
+        return torch.cat(probs,dim=1)
 
 
 if __name__ == "__main__":
