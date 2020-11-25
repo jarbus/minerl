@@ -12,6 +12,7 @@ from utils import *
 LR = 0.001
 SEQ_LEN = 1
 BATCH_SIZE = 64
+BUFFER_SIZE = 1000
 MODEL_PATH = "models/model.pt"
 parser = argparse.ArgumentParser()
 parser.add_argument("--train",action="store_true",help="Trains new model before evaluation")
@@ -85,6 +86,8 @@ done = False
 net_reward = 0
 it = 0
 
+mem = ReplayBuffer(BUFFER_SIZE)
+
 # Counts actions taken
 # Doesn't affect training
 output_history=Counter()
@@ -109,9 +112,18 @@ while not done:
     action_dict = action_tensor_to_Navigatev0(action_tensor[0], evaluation=True)
 
     obs, reward, done, info = env.step(action_dict)
+
+    state = (pov, feats)
+    # TODO fix this.. cop out: prev_state doesnt exist for first, doing calculations
+    #   for state twice is wasted time
+    try:
+        mem.add(prev_state, action_dict, reward, state, done)
+    except: pass
+    prev_state = state
+
     net_reward += reward
     if net_reward > 0:
-        print(f"{net_reward=} at {it=}")
+        print(f"{net_reward} at {it}")
     it += 1
     if it > 1000:
         break

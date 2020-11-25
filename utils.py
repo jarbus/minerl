@@ -3,6 +3,7 @@ from functools import partial
 import torch
 import numpy as np
 import random
+from collections import OrderedDict, namedtuple, deque
 
 from pdb import set_trace as T
 
@@ -151,7 +152,7 @@ def batch_action_tensor_to_Navigatev0(action_vec_torch, epsilon=0.01, evaluation
 
     for i,key in enumerate(["attack","camera","forward","jump","place"]):
         for b in range(b_size):
-            if i ==0:
+            if i == 0:
                 action_dict[key][b] = action_vec[b][i]
             # Make camera action a weighted sum
             elif i == 1:
@@ -161,6 +162,19 @@ def batch_action_tensor_to_Navigatev0(action_vec_torch, epsilon=0.01, evaluation
                 action_dict[key][b] = action_vec[b][i+4]
     return action_dict
 
+
+class ReplayBuffer :
+    def __init__(self, max_size, seed=None) :
+        self.max_size   = max_size
+        self.buffer     = deque(maxlen=max_size)
+        self.experience = namedtuple("Experience", ["state", "action", "reward", "next_state", "done"])
+        self.seed       = random.seed(seed)
+
+    def add(self, s, a, r, sp, d) :
+        self.buffer.append(self.experience(s, a, r, sp, d))
+
+    def sample(self, sample_size) :
+        return random.sample(self.buffer, sample_size)
 
 
 if __name__ == "__main__":
