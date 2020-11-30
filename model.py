@@ -7,16 +7,14 @@ from torchsummary import summary
 
 
 class Model(nn.Module):
-    """Model to approximate Q values.
+    """Example usage:
 
-    Input
-    -----
-        pov: batch_size x 3 x 64 x 64 POV
-        input_size
-
+    model = Model()
+    outputs = model(pov_tensor, feat_tensor)
     """
     def __init__(self):
         super(Model, self).__init__()
+        # Convolutional network architecture
         self.image_embed = nn.Sequential(
             nn.Conv2d(3, 16, 5),
             nn.MaxPool2d(2, 2),
@@ -33,12 +31,15 @@ class Model(nn.Module):
             nn.Flatten(),
             nn.Linear(864, 100),
         )
+        # Regularization layer
         self.dropout = nn.Dropout(p=0.05)
         self.l1 = nn.Linear(100 + 2, 200)
         self.r1 = nn.LeakyReLU()
         self.l2 = nn.Linear(200, 100)
         self.r2 = nn.LeakyReLU()
         self.out = nn.Linear(100, 9)
+        # The following allows use to sample each sub-action
+        # from its own distribution
         self.attack  = nn.Sigmoid()
         self.camera  = nn.Softmax(dim=1)
         self.forward_ = nn.Sigmoid()
@@ -46,6 +47,23 @@ class Model(nn.Module):
         self.place   = nn.Sigmoid()
 
 
+    """Model to approximate Q values.
+
+    Input
+    -----
+        pov:        (batch_size, 3, 64, 64) tensor of player view
+        input_size: (batch_size, 2)
+
+    Returns
+    -------
+        action:     (batch_size, 9) tensor with indicies:
+            0: attack probability
+            1-5: CAMERA_OPTIONS[0-4]
+            6: forward probability
+            7: jump probability
+            8: place probability
+
+    """
     def forward(self, pov, feats):
         pov = self.image_embed(pov)
         dropout = self.dropout(torch.cat((pov, feats), dim=1))
@@ -56,8 +74,3 @@ class Model(nn.Module):
         out        = self.out(full_embed)
         probs = self.attack(out[:,0:1]), out[:,1:6], self.forward_(out[:,6:7]), self.jump(out[:,7:8]), self.place(out[:,8:])
         return torch.cat(probs,dim=1)
-
-
-if __name__ == "__main__":
-    model = Model(2, 200)
-    summary(model, [(3, 64, 64), (2,)])

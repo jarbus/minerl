@@ -73,14 +73,23 @@ def batch_sample(array, evaluation=False):
 
 def Navigatev0_obs_to_tensor(obs: OrderedDict):
     """
-    Observation Space:
-        Dict({
-            "compassAngle": "Box(low=-180.0, high=180.0, shape=())",
-            "inventory": {
-                    "dirt": "Box(low=0, high=2304, shape=())"
-            },
-            "pov": "Box(low=0, high=255, shape=(64, 64, 3))"
-        })
+    Parameters:
+    -----------
+        Observation:
+              Dict({
+                  "compassAngle": "Box(low=-180.0, high=180.0, shape=())",
+                  "inventory": {
+                          "dirt": "Box(low=0, high=2304, shape=())"
+                  },
+                  "pov": "Box(low=0, high=255, shape=(64, 64, 3))"
+              })
+    Returns:
+    --------
+        Pair of tensors, (POV, features)
+
+        POV: (3,64,64) tensor
+        features: (compassAngle, dirt count)
+
     """
     return (
         torch.tensor(obs["pov"], dtype=torch.float),

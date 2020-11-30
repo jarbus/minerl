@@ -52,6 +52,8 @@ if args.train:
         for i in range(outputs.size(0)):
             output_history[torch.argmax(outputs[i]).item()] += 1
 
+        # Binary Cross Entropy loss for binary actions
+        # Cross Entropy loss for camera action distribution
         loss = bce(outputs[:,0], action_tensor[:,0])
         loss += cross_ent(outputs[:,1:6], torch.argmax(action_tensor[:,1:6],dim=1))
         loss += bce(outputs[:,6], action_tensor[:,6])
@@ -88,29 +90,25 @@ it = 0
 
 mem = ReplayBuffer(BUFFER_SIZE)
 
-# Counts actions taken
-# Doesn't affect training
-output_history=Counter()
-
 # Evaluates on environment
 while not done:
 
+    # Convert environment observations to PyTorch tensors
     pov, feats = Navigatev0_obs_to_tensor(obs)
     # Move channels into proper spot
     # (64,64,3) -> (3,64,64)
     pov = torch.transpose(pov, 0, 2)
-    # Turn into batch
+    # Turn into batch for PyTorch model processing
+    # (1,64,64,3)
     pov = pov.expand((1,) + pov.size())
     feats = feats.expand((1,) + feats.size())
 
+    # Compute actions
     action_tensor = model(pov, feats)
-    output_history[torch.argmax(action_tensor).item()] += 1
 
-    # Add fake sequence dimension
-    # action_tensor = action_tensor.expand((1,) + action_tensor.size())
-
+    # Turn action tensors into valid Minecraft actions
     action_dict = action_tensor_to_Navigatev0(action_tensor[0], evaluation=True)
-
+    # Perform action in Minecraft
     obs, reward, done, info = env.step(action_dict)
 
     state = (pov, feats)
