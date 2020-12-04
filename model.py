@@ -16,6 +16,7 @@ class Model(nn.Module):
         super(Model, self).__init__()
         # Convolutional network architecture
         self.image_embed = nn.Sequential(
+            nn.BatchNorm2d(3),
             nn.Conv2d(3, 16, 5),
             nn.MaxPool2d(2, 2),
             nn.LeakyReLU(True),
@@ -37,15 +38,9 @@ class Model(nn.Module):
         self.r1 = nn.LeakyReLU()
         self.l2 = nn.Linear(200, 100)
         self.r2 = nn.LeakyReLU()
-        self.out = nn.Linear(100, 9)
+        self.out = nn.Linear(100, 11)
         # The following allows use to sample each sub-action
         # from its own distribution
-        self.attack  = nn.Sigmoid()
-        self.camera  = nn.Softmax(dim=1)
-        self.forward_ = nn.Sigmoid()
-        self.jump    = nn.Sigmoid()
-        self.place   = nn.Sigmoid()
-
 
     """Model to approximate Q values.
 
@@ -72,5 +67,4 @@ class Model(nn.Module):
         full_embed = self.l2(full_embed)
         full_embed = self.r2(full_embed)
         out        = self.out(full_embed)
-        probs = self.attack(out[:,0:1]), out[:,1:6], self.forward_(out[:,6:7]), self.jump(out[:,7:8]), self.place(out[:,8:])
-        return torch.cat(probs,dim=1)
+        return out

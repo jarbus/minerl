@@ -7,12 +7,26 @@ import argparse
 from collections import Counter
 from torch import nn
 from model import Model
+import utils
 from utils import *
+
 
 LR = 0.001
 SEQ_LEN = 1
 BATCH_SIZE = 64
 BUFFER_SIZE = 1000
+TASK = 1
+
+# We multiply all actions not used for our task by 0
+# We do this by multiplying output vectors by zero
+# So weights for a specific action do not get updated
+
+TRAINING_MASK = torch.zeros((BATCH_SIZE,11))
+ENV_MASK = torch.zeros((1,11))
+for a in TASK_ACTIONS[TASK]:
+    TRAINING_MASK[:,a] = 1.0
+    ENV_MASK[:,a] = 1.0
+
 MODEL_PATH = "models/model.pt"
 parser = argparse.ArgumentParser()
 parser.add_argument("--train",action="store_true",help="Trains new model before evaluation")
@@ -45,26 +59,29 @@ if args.train:
             expand(feat_tensor),
         )
         # Convert action dict to tensor and put batches & sequences on same axis
-        action_tensor = Navigatev0_action_to_tensor(a)
+        action_tensor = Navigatev0_action_to_tensor(a,task=TASK)
         action_tensor = expand(action_tensor)
 
         outputs = model(pov_tensor, feat_tensor)
+        outputs = outputs * TRAINING_MASK
+        # Count agent actions
         for i in range(outputs.size(0)):
-            output_history[torch.argmax(outputs[i]).item()] += 1
+            act = torch.argmax(outputs[i]).item()
+            # Sometimes all valid actions will have negative values, if so just choose 10, "forward"
+            act = 10 if outputs[i][act] == 0 else act
+            output_history[act] += 1
+        # Count number of demonstrator actions
+        #for i in range(action_tensor.size(0)):
+        #    output_history[torch.argmax(action_tensor[i]).item()] += 1
 
-        # Binary Cross Entropy loss for binary actions
         # Cross Entropy loss for camera action distribution
-        loss = bce(outputs[:,0], action_tensor[:,0])
-        loss += cross_ent(outputs[:,1:6], torch.argmax(action_tensor[:,1:6],dim=1))
-        loss += bce(outputs[:,6], action_tensor[:,6])
-        loss += bce(outputs[:,7], action_tensor[:,7])
-        loss += bce(outputs[:,8], action_tensor[:,8])
-        if it % 100 == 0:
+        loss = cross_ent(outputs, torch.argmax(action_tensor,dim=1))
+        if it % 50 == 0:
             print(f"Iteration {it} Loss: {loss.item()}")
         loss.backward()
         optimizer.step()
         it += 1
-        if it > 200:
+        if it > 400:
             break
 
     torch.save(model.state_dict(),MODEL_PATH)
@@ -90,6 +107,7 @@ it = 0
 
 mem = ReplayBuffer(BUFFER_SIZE)
 
+output_history=Counter()
 # Evaluates on environment
 while not done:
 
@@ -104,10 +122,16 @@ while not done:
     feats = feats.expand((1,) + feats.size())
 
     # Compute actions
-    action_tensor = model(pov, feats)
+    outputs = model(pov, feats)
+    outputs = outputs * ENV_MASK
 
+    # Count agent actions
+    for i in range(outputs.size(0)):
+        act = torch.argmax(outputs[i]).item()
+        # Sometimes all valid actions will have negative values, if so just choose 10, "forward"
+        output_history[act] += 1
     # Turn action tensors into valid Minecraft actions
-    action_dict = action_tensor_to_Navigatev0(action_tensor[0], evaluation=True)
+    action_dict = action_tensor_to_Navigatev0(outputs[0], evaluation=True, task=TASK)
     # Perform action in Minecraft
     obs, reward, done, info = env.step(action_dict)
 
@@ -123,7 +147,7 @@ while not done:
     if net_reward > 0:
         print(f"{net_reward} at {it}")
     it += 1
-    if it > 1000:
+    if it > 100:
+        print("Total reward: ", net_reward)
+        print("Evaluation counter:",output_history)
         break
-print("Total reward: ", net_reward)
-print("Evaluation counter:",output_history)

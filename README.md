@@ -27,8 +27,8 @@ To run a training loop, then evaluate:
   6. forward + attack
   7. attack
   8. forward + jump
-  9. forward
-  10. jump
+  9. jump
+  10. forward
 
 For Curriculum Learning, we learn a few actions at a time. We do this by keeping the same
 action space, but masking actions we don't want to learn yet by multiplying by zero.
@@ -43,8 +43,8 @@ action space, but masking actions we don't want to learn yet by multiplying by z
   * cam left
   * cam right
   * forward + jump
-  * forward
   * jump
+  * forward
 
 ## Third task:
 
@@ -54,8 +54,8 @@ action space, but masking actions we don't want to learn yet by multiplying by z
   * cam down
   * attack
   * forward + jump
-  * forward
   * jump
+  * forward
 
 
 ## Fourth task (full action space):
@@ -70,5 +70,5 @@ action space, but masking actions we don't want to learn yet by multiplying by z
   * forward + attack
   * attack
   * forward + jump
-  * forward
   * jump
+  * forward

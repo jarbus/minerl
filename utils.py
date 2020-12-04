@@ -7,11 +7,16 @@ from collections import OrderedDict, namedtuple, deque
 
 from pdb import set_trace as T
 
-CAMERA_OPTIONS = torch.tensor([[-90.0, 0.0],
-                    [90.0,0.0],
-                    [0.0, 0.0],
-                    [0,-45],
-                    [0,45]])
+CAMERA_OPTIONS = torch.tensor([[0,-10],
+                    [0,10],
+                    [-10.0, 0.0],
+                    [10.0,0.0]])
+TASK_ACTIONS = {
+        1: {0, 1, 10},
+        2: {0, 1, 8,9,10},
+        3: {0,1,2,3,7,8,9,10},
+        4: {0,1,2,3,4,5,6,7,8,9,10}
+}
 
 # Shorthand to put sequences and batches on same axis
 def expand(tensor):
@@ -28,47 +33,6 @@ def expand(tensor):
 def contract(tensor, batch_size, seq_len):
     assert batch_size * seq_len == tensor.size(0)
     return torch.reshape(tensor, (batch_size, seq_len) + tensor.size()[2:])
-
-
-# distribution is of (batch_size, seq_len, distribution)
-def sample(action_vector, epsilon=0.01,evaluation=False):
-    sample = torch.zeros(9,dtype=torch.int8)
-    if evaluation:
-        sample[0] = round(action_vector[0].item())
-        sample[torch.argmax(action_vector[1:6])] = 1
-        sample[6] = round(action_vector[6].item())
-        sample[7] = round(action_vector[7].item())
-        sample[8] = round(action_vector[8].item())
-    elif random.random() < epsilon:
-        sample[0] = random.randint(0,1)
-        sample[random.randint(1,5)] = 1
-        sample[6] = random.randint(0,1)
-        sample[7] = random.randint(0,1)
-        sample[8] = random.randint(0,1)
-    else:
-        sample[0] = 1 if random.random() < action_vector[0] else 0
-        camera_thresh = random.random()
-        sum_ = 0
-        for i in range(1,6):
-            sum_ += action_vector[i]
-            if sum_ < random.random():
-                sample[i] = 1
-                break
-        sample[6] = 1 if random.random() < action_vector[6] else 6
-        sample[7] = 1 if random.random() < action_vector[7] else 7
-        sample[8] = 1 if random.random() < action_vector[8] else 8
-
-    return sample
-
-def batch_sample(array, evaluation=False):
-    batch_size, seq_len, dist_size = array.shape
-    # multithread sampling from probability dist with specified evaluation
-    _sample = partial(sample, evaluation=evaluation)
-    # sample from all timesteps in all batches by flattening timesteps
-    samples = torch.tensor(
-        map(_sample, my_array.reshape((batch_size + seq_len, dist_size)))
-    )
-    return torch.reshape(samples, (batch_size, seq_len, dist_size))
 
 
 def Navigatev0_obs_to_tensor(obs: OrderedDict):
@@ -94,43 +58,88 @@ def Navigatev0_obs_to_tensor(obs: OrderedDict):
     return (
         torch.tensor(obs["pov"], dtype=torch.float),
         torch.tensor(
-            np.stack([obs["compassAngle"], obs["inventory"]["dirt"]], axis=-1),
+            np.stack([obs["compassAngle"]/180.0, obs["inventory"]["dirt"]/10.0], axis=-1),
             dtype=torch.float,
         ),
     )
 
+def Navigatev0_action_to_tensor(act: OrderedDict, task=1):
+    """
+    Creates the following (batch_size, seq_len, 11) action tensor from Navigatev0 actions:
 
-def Navigatev0_action_to_tensor(act: OrderedDict):
-    # Convert batch player data to tensors
+      0. cam left
+      1. cam right
+      2. cam up
+      3. cam down
+      4. place + jump
+      5. place
+      6. forward + attack
+      7. attack
+      8. forward + jump
+      9. jump
+      10. forward
+    """
 
     batch_size, seq_len = act["jump"].shape
     PLACE_OPTIONS = {"none": 0, "dirt": 1}
     # ONE_HOT = {0: np.array([1, 0]), 1: np.array([0, 1])}
-    out = torch.zeros((batch_size,seq_len,9))
-    out[:,:,0] = torch.tensor(act["attack"])
-    out[:,:,6] = torch.tensor(act["forward"])
-    out[:,:,7] = torch.tensor(act["jump"])
+    out = torch.zeros((batch_size,seq_len,11))
 
     for b in range(batch_size):
         for s in range(seq_len):
             c = act["camera"]
+            # We don't need to check if 0, 1, and 10 are in task actions
+            # since they always will be
+            task_acts = TASK_ACTIONS[task]
+
+            # Set camera left
             if c[b,s][0] < -10 and abs(c[b,s][0]) >= abs(c[b,s][1]):
-                out[b,s][1] = 1
+                out[b,s][0] = 1
+            # Set camera right
             elif c[b,s][0] > 10 and abs(c[b,s][0]) >= abs(c[b,s][1]):
+                out[b,s][1] = 1
+            # Set camera up
+            elif 2 in task_acts and c[b,s][1] < -10 and abs(c[b,s][1]) >= abs(c[b,s][0]):
                 out[b,s][2] = 1
-            elif c[b,s][1] < -10 and abs(c[b,s][1]) >= abs(c[b,s][0]):
-                out[b,s][4] = 1
-            elif c[b,s][1] > 10 and abs(c[b,s][1]) >= abs(c[b,s][0]):
-                out[b,s][5] = 1
+            elif 3 in task_acts and c[b,s][1] > 10 and abs(c[b,s][1]) >= abs(c[b,s][0]):
+                out[b,s][3] = 1
+            elif PLACE_OPTIONS[act["place"][b,s]] == 1:
+                if 4 in task_acts and act["jump"][b,s] == 1:
+                    out[b,s][4] = 1
+                elif 5 in task_acts:
+                    out[b,s][5] = 1
+            elif act["attack"][b,s] == 1:
+                if 6 in task_acts and act["forward"][b,s] == 1:
+                    out[b,s][6] = 1
+                elif 7 in task_acts:
+                    out[b,s][7] = 1
+            elif act["jump"][b,s] == 1:
+                if 8 in task_acts and act["forward"][b,s] == 1:
+                    out[b,s][8] = 1
+                elif 9 in task_acts:
+                    out[b,s][9] = 1
             else:
-                out[b,s][3] =1
-            out[b,s][8] = PLACE_OPTIONS[act["place"][b,s]]
+                out[b,s][10] = 1
 
     return out
 
+index_to_actions = {
+        0: np.array([0,-10]),
+        1: np.array([0,10]),
+        2: np.array([-10,0]),
+        3: np.array([10,0]),
+        4: ["place","jump"],
+        5: ["place"],
+        6: ["forward","attack"],
+        7: ["attack"],
+        8: ["forward","jump"],
+        9: ["jump"],
+        10: ["forward"]}
 
-def action_tensor_to_Navigatev0(action_vec_torch, epsilon=0.01, evaluation=False):
+def action_tensor_to_Navigatev0(action_vec_torch, epsilon=0.01, evaluation=False, task=1):
     # Constructs a one-hot action dict for stepping through the environment
+
+    # Task parameter must be in range [1, 4]
     action_vec = action_vec_torch.detach()
     action_dict = OrderedDict()
     action_dict["attack"] = 0
@@ -144,32 +153,24 @@ def action_tensor_to_Navigatev0(action_vec_torch, epsilon=0.01, evaluation=False
     action_dict["sneak"] = 0
     action_dict["sprint"] = 0
 
-    actions = sample(action_vec, epsilon=epsilon, evaluation=evaluation)
-    action_dict["camera"] = CAMERA_OPTIONS[torch.argmax(actions[1:6])-1]
-    for key, idx in zip(["attack","forward","jump","place"],  [0,6,7,8]):
-        action_dict[key] = actions[idx].item()
+
+    # Only look at the actions we care about for the task
+    actions = TASK_ACTIONS[task]
+
+    # Choose the best action from available actions
+    max_idx = max(((idx,action_vec_torch[idx]) for idx in actions),\
+                    key=lambda x:x[1])[0]
+    if max_idx not in actions:
+        print("wrong action selected:")
+        print(max_idx)
+    if max_idx < 4:
+        action_dict["camera"] = index_to_actions[max_idx]
+    else:
+        for action in index_to_actions[max_idx]:
+            action_dict[action] = 1
+
     return action_dict
 
-def batch_action_tensor_to_Navigatev0(action_vec_torch, epsilon=0.01, evaluation=False):
-    # Used to convert q-value estimates to dictionaries for compute in loss function
-    b_size = action_vec_torch.size(0)
-    action_vec = action_vec_torch.detach()
-    action_dict = OrderedDict()
-    for key in ["attack", "forward","jump","place","back","right","left","sneak""sprint"]:
-        action_dict[key] = np.zeros((b_size))
-    action_dict["camera"] = np.zeros((b_size,2))
-
-    for i,key in enumerate(["attack","camera","forward","jump","place"]):
-        for b in range(b_size):
-            if i == 0:
-                action_dict[key][b] = action_vec[b][i]
-            # Make camera action a weighted sum
-            elif i == 1:
-                for j in range(1,1+len(CAMERA_OPTIONS)):
-                    action_dict["camera"][b] += action_vec[b][j] * CAMERA_OPTIONS[j]
-            else:
-                action_dict[key][b] = action_vec[b][i+4]
-    return action_dict
 
 
 class ReplayBuffer :
@@ -184,12 +185,3 @@ class ReplayBuffer :
 
     def sample(self, sample_size) :
         return random.sample(self.buffer, sample_size)
-
-
-if __name__ == "__main__":
-    print("sample tests")
-    dist = [0.25, 0.75]
-    counts = np.zeros(2)
-    for i in range(100):
-        counts += sample(dist, False)
-    print(counts)
