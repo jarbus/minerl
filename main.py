@@ -15,7 +15,14 @@ LR = 0.001
 SEQ_LEN = 1
 BATCH_SIZE = 64
 BUFFER_SIZE = 1000
-TASK = 1
+
+MODEL_PATH = "models/model.pt"
+parser = argparse.ArgumentParser()
+parser.add_argument("--train",action="store_true",help="Trains new model before evaluation")
+parser.add_argument("--task",type=int,help="Specify task action space, 1-4")
+args = parser.parse_args()
+
+TASK = args.task
 
 # We multiply all actions not used for our task by 0
 # We do this by multiplying output vectors by zero
@@ -27,10 +34,6 @@ for a in TASK_ACTIONS[TASK]:
     TRAINING_MASK[:,a] = 1.0
     ENV_MASK[:,a] = 1.0
 
-MODEL_PATH = "models/model.pt"
-parser = argparse.ArgumentParser()
-parser.add_argument("--train",action="store_true",help="Trains new model before evaluation")
-args = parser.parse_args()
 
 ########################
 # TRAIN ON EXPERT DATA #
