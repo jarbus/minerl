@@ -50,8 +50,12 @@ class DQfD():
         self.batch_size = BATCH_SIZE
         self.learning_rate = LEARNING_RATE
         self.gamma = GAMMA
-        self.tau = TARGET_UPDATE_RATE
 
+        # frequency of target model update
+        self.tau = TARGET_UPDATE_RATE
+        # target model update counter
+        self.c = 0
+        
         self.experience = namedtuple("Experience", ["state", "action", "reward", "next_state", "done"])
 
 
@@ -128,7 +132,7 @@ class DQfD():
 
         return Q_behaviorB, Q_targetB
 
-    def J_td(self, Q_behaviorB, Q_targetB):
+    def J_DQ(self, Q_behaviorB, Q_targetB):
         # compute loss function
         return F.smooth_l1_loss(Q_behaviorB, Q_targetB.unsqueeze(1))
         
@@ -152,7 +156,7 @@ class DQfD():
         return np.mean((tourch.tensor(Q_B + lm_B).max(1)[0] - QE_B), axis=1)
 
 
-    def Jn(self, samples, Qpredict):
+    def J_n(self, samples, Qpredict):
         return 
 
     def update(self, sampleB):
@@ -163,16 +167,16 @@ class DQfD():
             error = math.fabs(float(Qpredict[i] - Qtarget[i]))
             self.replay.update(idxs[i], error)
 
-        Jtd = self.loss(Qpredict, Qtarget, IS*0+1)
-        JE = self.JE(sampleB)
-        Jn = self.Jn(sampleB,Qpredict)
-        J = Jtd + self.lambda2 * JE + self.lambda1 * Jn
+        J_DQ = self.J_DQ(Qpredict, Qtarget)
+        J_E = self.J_E(sampleB)
+        J_n = self.Jn(sampleB,Qpredict)
+        J = J_DQ + self.lambda2 * J_E + self.lambda1 * J_n
         J.backward()
         self.opt.step()
 
-        if self.c >= self.C:
+        if self.c >= self.tau:
             self.c = 0
-            self.vc.updateTargetNet()
+            self.update_target_model()
         else:
             self.c += 1
 
