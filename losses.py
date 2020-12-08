@@ -36,15 +36,14 @@ def J_E(pred, demo_action_tensor=None, margin=0.8):
 
     return torch.sum(loss)/torch.sum(is_demo)
 
-def J_L2(target_model):
-
+def J_L2(target_network):
     """
     L2 regularization loss. Computed on target network
     """
     l2 = torch.zeros(1,)
-    for p in target_model.parameters():
+    for p in target_network.parameters():
         l2 = l2 + torch.sum(p * p)
     return l2
 
-def J_Q():
+def J_Q(target_network, behavior_network, samples):
     return J_DQ() + l1*J_N() + l2*J_E() + l3*J_L2()
