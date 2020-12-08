@@ -1,9 +1,11 @@
 import torch
 
 def J_DQ(pred, actual):
+    "For Saber"
     pass
 
 def J_N(pred, actual):
+    "For Saber/Ryan"
     pass
 
 def J_E(pred, demo_action_tensor=None, margin=0.8):
@@ -18,25 +20,31 @@ def J_E(pred, demo_action_tensor=None, margin=0.8):
     Returns
       loss:                (1,) tensor of loss magnitude
     """
-    if not demo_action_tensor:
+    if not type(demo_action_tensor) or torch.sum(demo_action_tensor).item() == 0:
         return 0
 
     # max_a( Q(s,a) - l(s, a_e) ) - Q(s, a_e)
     # creates a (b, 1) tensor
-    loss = torch.max(pred + margin*demo_action_tensor,dim=1)\
+    loss = torch.max(pred + margin*demo_action_tensor,dim=1)[0]\
             - torch.sum(pred * demo_action_tensor,dim=1)
 
     # (b,|A|) -> (b,1) indicating whether there is
     # a demonstrator action in each row with a 1 or 0
     is_demo = torch.sum(demo_action_tensor,dim=1)
-
     # masks out losses for non-expert examples
     loss = is_demo * loss
 
     return torch.sum(loss)/torch.sum(is_demo)
 
-def J_L2(pred, actual):
-    pass
+def J_L2(target_model):
+
+    """
+    L2 regularization loss. Computed on target network
+    """
+    l2 = torch.zeros(1,)
+    for p in target_model.parameters():
+        l2 = l2 + torch.sum(p * p)
+    return l2
 
 def J_Q():
     return J_DQ() + l1*J_N() + l2*J_E() + l3*J_L2()

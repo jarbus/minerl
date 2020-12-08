@@ -11,6 +11,9 @@ import torch.nn.functional as F
 from model import Model
 import utils
 from utils import *
+from losses import *
+
+
 
 
 LR = 0.001
@@ -61,8 +64,8 @@ class DQfD():
 
         # epsilon probaility for epsilon-greedy algorithm
         # epsilon starts with EPSILON_START and exponentially decays
-        # at the rate of EPSILON_DECAY until it reaches to the 
-        # value EPSILON_END 
+        # at the rate of EPSILON_DECAY until it reaches to the
+        # value EPSILON_END
         self.epsilon_start = EPSILON_START
         self.epsilon = EPSILON_START
         self.epsilon_end = EPSILON_END
@@ -95,7 +98,7 @@ class DQfD():
 
         if sample > self.epsilon:
             # the model returns Q value per action for a batch of input states
-            # with shape (batch_size, n_actions). We pick the action 
+            # with shape (batch_size, n_actions). We pick the action
             q = self.behavior_net(state)
             action_idx = np.argmax(q)
 
@@ -111,7 +114,7 @@ class DQfD():
 
         returns:
         '''
-        
+
         # to split and concatenate "state", "action", "reward", "next_state", "done"
         # in separate lists
         batch = self.experience(*zip(*sampleB))
@@ -126,7 +129,7 @@ class DQfD():
         Q_behaviorB = self.behavior_net(stateB).gather(1, actionB)
 
         # to compute the expected target Q-values
-        Q_targetB = rewardB 
+        Q_targetB = rewardB
         Q_targetB[doneB != 1] += self.gamma * \
             self.target_net(next_stateB[doneB != 1]).max(1)[0].detach()
 
@@ -135,7 +138,7 @@ class DQfD():
     def J_DQ(self, Q_behaviorB, Q_targetB):
         # compute loss function
         return F.smooth_l1_loss(Q_behaviorB, Q_targetB.unsqueeze(1))
-        
+
     def J_E(self, samplesB):
         # to split and concatenate "state", "action", "reward", "next_state", "done"
         # in separate lists
@@ -146,8 +149,8 @@ class DQfD():
 
         aE_B = actionB[isDemoB == 1]
         QE_B = self.behavior_net(stateB[isDemoB == 1]).gather(1, aE_B)
-        
-        # TODO: indeed, this can't be a correct formula for large margin 
+
+        # TODO: indeed, this can't be a correct formula for large margin
         a_B = actionB[isDemoB != 1]
         Q_B =  self.behavior_net(stateB[isDemoB == 1]).gather(1, a_B)
 
@@ -163,7 +166,7 @@ class DQfD():
 
 
     def J_n(self, sampleB, Qpredict):
-        return 
+        return
 
     def update(self, sampleB):
         self.opt.zero_grad()
