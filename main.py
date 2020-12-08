@@ -1,10 +1,11 @@
 #TODO deep q networks from demonstrations
 import sys
+import numpy as np
 import gym
 import minerl
 import torch
 import argparse
-from collections import Counter
+from collections import Counter, namedtuple
 from torch import nn
 from model import Model
 import utils
@@ -35,11 +36,103 @@ for a in TASK_ACTIONS[TASK]:
     ENV_MASK[:,a] = 1.0
 
 
+class DQNAgent():
+    def __init__(self,
+                BATCH_SIZE = 128,
+                LEARNING_RATE = 0.0001,
+                GAMMA = 0.999,
+                EPSILON_START = 0.9,
+                EPSILON_END = 0.0001,
+                EPSILON_DECAY = 200,
+                TARGET_UPDATE_RATE = 10):
+        self.batch_size = BATCH_SIZE
+        self.learning_rate = LEARNING_RATE
+        self.gamma = GAMMA
+        self.tau = TARGET_UPDATE_RATE
+
+        self.experience = namedtuple("Experience", ["state", "action", "reward", "next_state", "done"])
+
+
+        # epsilon probaility for epsilon-greedy algorithm
+        # epsilon starts with EPSILON_START and exponentially decays
+        # at the rate of EPSILON_DECAY until it reaches to the 
+        # value EPSILON_END 
+        self.epsilon_start = EPSILON_START
+        self.epsilon = EPSILON_START
+        self.epsilon_end = EPSILON_END
+        self.epsilon_decay = EPSILON_DECAY
+
+        # create policy model and target model
+        self.behavior_net = None
+        self.target_net = None
+
+    def update_target_model(self):
+        '''
+        updates the target network parameters to match with policy network
+        '''
+        self.target_net.load_state_dict(self.behavior_net.state_dict(), strict=True)
+        pass
+
+    def select_action(self, state, action_set):
+        '''
+        selects an action based on epsilon-greedy algorithm.
+        In fact, with the chance of epsilon, the algorithm, with uniform distribution,
+        randomly selects an action and with the (1-epsilon) chance it picks an action
+        from the policy model.
+        '''
+        sample = np.random.rand()
+        self.epsilon -= (self.epsilon_start - self.epsilon_end) / self.epsilon_decay
+
+        if sample > self.epsilon:
+            # the model returns Q value per action for a batch of input states
+            # with shape (batch_size, n_actions). We pick the action 
+            q = self.behavior_net(state)
+            action_idx = np.argmax(q)
+
+        else:
+            action_idx = np.random.randint(0,12)
+        return action_idx
+
+    def optimize_model(self, sample_batch):
+        '''
+        arguments:
+            sample_batch: list
+                a list of random experiences from the replay memory.
+
+        returns:
+        '''
+        
+        # to split and concatenate "state", "action", "reward", "next_state", "done"
+        # in separate lists
+        batch = self.experience(*zip(*sample_batch))
+        state_batch = torch.cat(batch.state)
+        action_batch = torch.cat(batch.action)
+        reward_batch = torch.cat(batch.reward)
+        next_state_batch = torch.cat(batch.next_state)
+        done_batch = torch.cat(batch.done)
+
+        # given a state s_t to the behavior network, compute Q(s_t)
+        # then we use it to calucate Q(s_t, a_t) according to a greedy policy
+        state_action_value_batch = self.behavior_net(state_batch).gather(1, action_batch)
+
+        # compute V(s_t+1) = max_a(A(s_t+1, a)) for all next states 
+        next_state_value_batch = torch.zeros(self.batch_size)
+        # the target network updates the non-terminal state-values
+        next_state_value_batch[done_batch] = self.target_net(state_batch[done_batch])
+        #to compute the expected Q-values
+        expected_state_action_value_batch = reward_batch + \
+                                            next_state_value_batch * self.gamma
+        
+        # compute loss function
+
+
+
 ########################
 # TRAIN ON EXPERT DATA #
 ########################
 if args.train:
     model = Model()
+    target_model = Model()
     bce = nn.BCELoss()
     cross_ent = nn.CrossEntropyLoss()
     mse = nn.MSELoss()
