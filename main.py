@@ -55,7 +55,7 @@ class DQfD():
         self.tau = TARGET_UPDATE_RATE
         # target model update counter
         self.c = 0
-        
+
         self.experience = namedtuple("Experience", ["state", "action", "reward", "next_state", "done"])
 
 
@@ -83,7 +83,7 @@ class DQfD():
         self.target_net.eval()
         pass
 
-    def select_action(self, state, action_set):
+    def select_action(self, state):
         '''
         selects an action based on epsilon-greedy algorithm.
         In fact, with the chance of epsilon, the algorithm, with uniform distribution,
@@ -156,7 +156,7 @@ class DQfD():
         return np.mean((tourch.tensor(Q_B + lm_B).max(1)[0] - QE_B), axis=1)
 
 
-    def J_n(self, samples, Qpredict):
+    def J_n(self, sampleB, Qpredict):
         return 
 
     def update(self, sampleB):
