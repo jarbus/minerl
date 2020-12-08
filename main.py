@@ -6,7 +6,8 @@ import minerl
 import torch
 import argparse
 from collections import Counter, namedtuple
-from torch import nn
+import torch.nn as nn
+import torch.nn.functional as F
 from model import Model
 import utils
 from utils import *
@@ -36,7 +37,7 @@ for a in TASK_ACTIONS[TASK]:
     ENV_MASK[:,a] = 1.0
 
 
-class DQNAgent():
+class DQfD():
     def __init__(self,
                 BATCH_SIZE = 128,
                 LEARNING_RATE = 0.0001,
@@ -44,7 +45,8 @@ class DQNAgent():
                 EPSILON_START = 0.9,
                 EPSILON_END = 0.0001,
                 EPSILON_DECAY = 200,
-                TARGET_UPDATE_RATE = 10):
+                TARGET_UPDATE_RATE = 10,
+                MARGIN = 0.8):
         self.batch_size = BATCH_SIZE
         self.learning_rate = LEARNING_RATE
         self.gamma = GAMMA
@@ -62,6 +64,9 @@ class DQNAgent():
         self.epsilon_end = EPSILON_END
         self.epsilon_decay = EPSILON_DECAY
 
+        # large marging for "large margin classification loss"
+        self.margin = MARGIN
+
         # create policy model and target model
         self.behavior_net = None
         self.target_net = None
@@ -71,6 +76,7 @@ class DQNAgent():
         updates the target network parameters to match with policy network
         '''
         self.target_net.load_state_dict(self.behavior_net.state_dict(), strict=True)
+        self.target_net.eval()
         pass
 
     def select_action(self, state, action_set):
@@ -93,10 +99,10 @@ class DQNAgent():
             action_idx = np.random.randint(0,12)
         return action_idx
 
-    def optimize_model(self, sample_batch):
+    def calcTD(self, sampleB):
         '''
         arguments:
-            sample_batch: list
+            sampleB: list
                 a list of random experiences from the replay memory.
 
         returns:
@@ -104,28 +110,71 @@ class DQNAgent():
         
         # to split and concatenate "state", "action", "reward", "next_state", "done"
         # in separate lists
-        batch = self.experience(*zip(*sample_batch))
-        state_batch = torch.cat(batch.state)
-        action_batch = torch.cat(batch.action)
-        reward_batch = torch.cat(batch.reward)
-        next_state_batch = torch.cat(batch.next_state)
-        done_batch = torch.cat(batch.done)
+        batch = self.experience(*zip(*sampleB))
+        stateB = torch.cat(batch.state)
+        actionB = torch.cat(batch.action)
+        rewardB = torch.cat(batch.reward)
+        next_stateB = torch.cat(batch.next_state)
+        doneB = torch.cat(batch.done)
 
         # given a state s_t to the behavior network, compute Q(s_t)
-        # then we use it to calucate Q(s_t, a_t) according to a greedy policy
-        state_action_value_batch = self.behavior_net(state_batch).gather(1, action_batch)
+        # then we use it to calculate Q(s_t, a_t) according to a greedy policy
+        Q_behaviorB = self.behavior_net(stateB).gather(1, actionB)
 
-        # compute V(s_t+1) = max_a(A(s_t+1, a)) for all next states 
-        next_state_value_batch = torch.zeros(self.batch_size)
-        # the target network updates the non-terminal state-values
-        next_state_value_batch[done_batch] = self.target_net(state_batch[done_batch])
-        #to compute the expected Q-values
-        expected_state_action_value_batch = reward_batch + \
-                                            next_state_value_batch * self.gamma
-        
+        # to compute the expected target Q-values
+        Q_targetB = rewardB 
+        Q_targetB[doneB != 1] += self.gamma * \
+            self.target_net(next_stateB[doneB != 1]).max(1)[0].detach()
+
+        return Q_behaviorB, Q_targetB
+
+    def J_td(self, Q_behaviorB, Q_targetB):
         # compute loss function
+        return F.smooth_l1_loss(Q_behaviorB, Q_targetB.unsqueeze(1))
+        
+    def J_E(self, samplesB):
+        # to split and concatenate "state", "action", "reward", "next_state", "done"
+        # in separate lists
+        batch = self.experience(*zip(*samplesB))
+        stateB = torch.cat(batch.state)
+        actionB = torch.cat(batch.action)
+        isDemoB = torch.cat(batch.isDemoB)
+
+        aE_B = actionB[isDemoB == 1]
+        QE_B = self.behavior_net(stateB[isDemoB == 1]).gather(1, aE_B)
+        
+        a_B = actionB[isDemoB != 1]
+        Q_B =  self.behavior_net(stateB[isDemoB == 1]).gather(1, a_B)
+
+        lm_B = tourch.tensor([self.margin if (a_B != aE_B) else 0])\
+                     .reshape(actionB.size(0), -1)
+        # TODO: indeed, this can't be a correct formula for large margin 
+        return np.mean((tourch.tensor(Q_B + lm_B).max(1)[0] - QE_B), axis=1)
 
 
+    def Jn(self, samples, Qpredict):
+        return 
+
+    def update(self, sampleB):
+        self.opt.zero_grad()
+        Qpredict, Qtarget = self.calcTD(sampleB)
+
+        for i in range(self.mbsize):
+            error = math.fabs(float(Qpredict[i] - Qtarget[i]))
+            self.replay.update(idxs[i], error)
+
+        Jtd = self.loss(Qpredict, Qtarget, IS*0+1)
+        JE = self.JE(sampleB)
+        Jn = self.Jn(sampleB,Qpredict)
+        J = Jtd + self.lambda2 * JE + self.lambda1 * Jn
+        J.backward()
+        self.opt.step()
+
+        if self.c >= self.C:
+            self.c = 0
+            self.vc.updateTargetNet()
+        else:
+            self.c += 1
 
 ########################
 # TRAIN ON EXPERT DATA #
