@@ -147,13 +147,19 @@ class DQfD():
         aE_B = actionB[isDemoB == 1]
         QE_B = self.behavior_net(stateB[isDemoB == 1]).gather(1, aE_B)
         
+        # TODO: indeed, this can't be a correct formula for large margin 
         a_B = actionB[isDemoB != 1]
         Q_B =  self.behavior_net(stateB[isDemoB == 1]).gather(1, a_B)
 
-        lm_B = tourch.tensor([self.margin if (a_B != aE_B) else 0])\
+        lm_B = torch.tensor([self.margin if (a_B != aE_B) else 0])\
                      .reshape(actionB.size(0), -1)
-        # TODO: indeed, this can't be a correct formula for large margin 
-        return np.mean((tourch.tensor(Q_B + lm_B).max(1)[0] - QE_B), axis=1)
+
+        return F.margin_ranking_loss(input1=Q_B, \
+                                     input2=QE_B, \
+                                     target= torch.ones_like(Q_B), \
+                                     margin=lm_B, \
+                                     reduce= True, \
+                                     reduction='mean')
 
 
     def J_n(self, sampleB, Qpredict):
