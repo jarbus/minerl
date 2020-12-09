@@ -55,13 +55,21 @@ def Navigatev0_obs_to_tensor(obs: OrderedDict):
         features: (compassAngle, dirt count)
 
     """
-    return (
-        torch.tensor(obs["pov"], dtype=torch.float),
-        torch.tensor(
+
+    pov = torch.tensor(obs["pov"], dtype=torch.float),
+    feats = torch.tensor(
             np.stack([obs["compassAngle"]/180.0, obs["inventory"]["dirt"]/10.0], axis=-1),
-            dtype=torch.float,
-        ),
-    )
+            dtype=torch.float)
+
+    # Move channels into proper spot
+    # (64,64,3) -> (3,64,64)
+    pov = torch.transpose(pov, 0, 2)
+    # Turn into batch for PyTorch model processing
+    # (1,64,64,3)
+    pov = pov.expand((1,) + pov.size())
+    feats = feats.expand((1,) + feats.size())
+
+    return pov, feats
 
 def Navigatev0_action_to_tensor(act: OrderedDict, task=1):
     """

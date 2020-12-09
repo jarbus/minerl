@@ -52,9 +52,13 @@ def J_Q(target_network,
         l1=1.0,
         l2=1.0,
         l3=1e-5,
-        margin=0.8):
+        margin=0.8, mask=None):
 
     states, actions, rewards, is_demo, _  = samples
     Q_t = target_network(states[0],states[1])
     Q_b = behavior_network(states[0],states[1])
+    if mask is not None:
+        Q_t += mask
+        Q_b += mask
+
     return J_DQ() + l1*J_N() + l2*J_E(Q_t,is_demo,margin=margin) + l3*J_L2(target_network)
