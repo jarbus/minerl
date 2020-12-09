@@ -1,14 +1,15 @@
 import torch
 
-def J_DQ(pred, actual):
+def J_DQ():
     "For Saber"
+    return 0
     pass
 
-def J_N(pred, actual):
+def J_N():
     "For Saber/Ryan"
-    pass
+    return 0
 
-def J_E(pred, demo_action_tensor=None, margin=0.8):
+def J_E(Q_t, demo_action_tensor=None, margin=0.8):
     """
     Large Margin Classification Loss
     --------------------------------
@@ -25,8 +26,8 @@ def J_E(pred, demo_action_tensor=None, margin=0.8):
 
     # max_a( Q(s,a) - l(s, a_e) ) - Q(s, a_e)
     # creates a (b, 1) tensor
-    loss = torch.max(pred + margin*demo_action_tensor,dim=1)[0]\
-            - torch.sum(pred * demo_action_tensor,dim=1)
+    loss = torch.max(Q_t + margin*demo_action_tensor,dim=1)[0]\
+            - torch.sum(Q_t * demo_action_tensor,dim=1)
 
     # (b,|A|) -> (b,1) indicating whether there is
     # a demonstrator action in each row with a 1 or 0
@@ -45,5 +46,15 @@ def J_L2(target_network):
         l2 = l2 + torch.sum(p * p)
     return l2
 
-def J_Q(target_network, behavior_network, samples):
-    return J_DQ() + l1*J_N() + l2*J_E() + l3*J_L2()
+def J_Q(target_network,
+        behavior_network,
+        samples,
+        l1=1.0,
+        l2=1.0,
+        l3=1e-5,
+        margin=0.8):
+
+    states, actions, rewards, is_demo, _  = samples
+    Q_t = target_network(states[0],states[1])
+    Q_b = behavior_network(states[0],states[1])
+    return J_DQ() + l1*J_N() + l2*J_E(Q_t,is_demo,margin=margin) + l3*J_L2(target_network)
