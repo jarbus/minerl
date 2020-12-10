@@ -129,6 +129,6 @@ def J_Q(target_network,
         Q_b += mask
 
     return J_DQ(Q_b, Q_TD) + \
-           l1*J_n(Q-b, Q_n) + \
+           l1*J_n(Q_b, Q_n) + \
            l2*J_E(Q_t,is_demo,margin=margin) + \
            l3*J_L2(target_network)
