@@ -109,7 +109,7 @@ def J_Q(target_network,
         mask=None,
         gamma=0.999):
 
-    states, actions, rewards, next_states, nth_states, done, is_demo  = samples
+    states, actions, rewards, next_states, n_step_rewards, nth_states, done, is_demo  = samples
     Q_t = target_network(states[0],states[1])
     Q_b = behavior_network(states[0],states[1])
 
@@ -120,7 +120,7 @@ def J_Q(target_network,
 
     # to compute the n-step TD Q-values from target model
     n = 10
-    Q_n = n-step-rewards
+    Q_n = n_step_rewards
     # Q_n[done != 1] += (gamma ** n) * target_network(nth_states[done != 1]).max(dim=1)[0]
     Q_n += (gamma ** n) * target_network(nth_states).max(dim=1)[0]
 
