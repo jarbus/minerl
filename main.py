@@ -106,68 +106,6 @@ class DQfD():
             action_idx = np.random.randint(0,12)
         return action_idx
 
-    def calcTD(self, sampleB):
-        '''
-        arguments:
-            sampleB: list
-                a list of random experiences from the replay memory.
-
-        returns:
-        '''
-
-        # to split and concatenate "state", "action", "reward", "next_state", "done"
-        # in separate lists
-        batch = self.experience(*zip(*sampleB))
-        stateB = torch.cat(batch.state)
-        actionB = torch.cat(batch.action)
-        rewardB = torch.cat(batch.reward)
-        next_stateB = torch.cat(batch.next_state)
-        doneB = torch.cat(batch.done)
-
-        # given a state s_t to the behavior network, compute Q(s_t)
-        # then we use it to calculate Q(s_t, a_t) according to a greedy policy
-        Q_behaviorB = self.behavior_net(stateB).gather(1, actionB)
-
-        # to compute the expected target Q-values
-        Q_targetB = rewardB
-        Q_targetB[doneB != 1] += self.gamma * \
-            self.target_net(next_stateB[doneB != 1]).max(1)[0].detach()
-
-        return Q_behaviorB, Q_targetB
-
-    def J_DQ(self, Q_behaviorB, Q_targetB):
-        # compute loss function
-        return F.smooth_l1_loss(Q_behaviorB, Q_targetB.unsqueeze(1))
-
-    def J_E(self, samplesB):
-        # to split and concatenate "state", "action", "reward", "next_state", "done"
-        # in separate lists
-        batch = self.experience(*zip(*samplesB))
-        stateB = torch.cat(batch.state)
-        actionB = torch.cat(batch.action)
-        isDemoB = torch.cat(batch.isDemoB)
-
-        aE_B = actionB[isDemoB == 1]
-        QE_B = self.behavior_net(stateB[isDemoB == 1]).gather(1, aE_B)
-
-        # TODO: indeed, this can't be a correct formula for large margin
-        a_B = actionB[isDemoB != 1]
-        Q_B =  self.behavior_net(stateB[isDemoB == 1]).gather(1, a_B)
-
-        lm_B = torch.tensor([self.margin if (a_B != aE_B) else 0])\
-                     .reshape(actionB.size(0), -1)
-
-        return F.margin_ranking_loss(input1=Q_B, \
-                                     input2=QE_B, \
-                                     target= torch.ones_like(Q_B), \
-                                     margin=lm_B, \
-                                     reduce= True, \
-                                     reduction='mean')
-
-
-    def J_n(self, sampleB, Qpredict):
-        return
-
     def update(self, sampleB):
         self.opt.zero_grad()
         Qpredict, Qtarget = self.calcTD(sampleB)

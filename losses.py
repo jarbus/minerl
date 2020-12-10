@@ -31,14 +31,15 @@ def calcTD(self, sampleB):
 
     return Q_behaviorB, Q_targetB
 
-def J_DQ(Q_b, Q_t):
+def J_DQ(Q_b, Q_TD):
     """
-    TD Loss: this function uses Huber loss function to calculate 
-    the loss between behavioral and target model outputs.
+    1-step TD Loss: this function uses Huber function to calculate 
+    the loss between Q-values from  the behavioral and 1-step TD values 
+    from the target model outputs.
     --------------------------------
     Parameters
       Q_b:                 (b,|A|) tensor of q-values from behavior model
-      Q_t:                 (b,|A|) tensor of q-values from target model
+      Q_TD:                (b,|A|) tensor of TD 1-step q-values from target model
 
     Returns
       loss:                (1,) tensor of loss magnitude
@@ -46,9 +47,20 @@ def J_DQ(Q_b, Q_t):
     return F.smooth_l1_loss(Q_b, Q_t, reduction='mean')
 
 
-def J_n(Q_b, ):
-    "For Saber/Ryan"
-    return 0
+def J_n(Q_b, Q_n):
+    """
+    n-step TD Loss: this function uses Huber function to calculate 
+    the loss between Q-values from  the behavioral and n-step TD values 
+    from the target model outputs.
+    --------------------------------
+    Parameters
+      Q_b:                 (b,|A|) tensor of q-values from behavior model
+      Q_n:                 (b,|A|) tensor of TD n-step q-values from target model
+
+    Returns
+      loss:                (1,) tensor of loss magnitude
+    """
+    return F.smooth_l1_loss(Q_b, Q_n, reduction='mean')
 
 def J_E(Q_t, demo_action_tensor=None, margin=0.8):
     """
@@ -97,16 +109,26 @@ def J_Q(target_network,
         mask=None,
         gamma=0.999):
 
-    states, actions, rewards, n_states, done, is_demo  = samples
+    states, actions, rewards, next_states, nth_states, done, is_demo  = samples
     Q_t = target_network(states[0],states[1])
     Q_b = behavior_network(states[0],states[1])
 
-    # to compute the TD target Q-values
+    # to compute the 1-step TD Q-values from target model
     Q_TD = rewards
-    Q_TD[done != 1] += gamma * target_network(n_states[done != 1]).max(dim=1)[0]
+    # Q_TD[done != 1] += gamma * target_network(n_states[done != 1]).max(dim=1)[0]
+    Q_TD += gamma * target_network(next_states).max(dim=1)[0]
+
+    # to compute the n-step TD Q-values from target model
+    n = 10
+    Q_n = n-step-rewards
+    # Q_n[done != 1] += (gamma ** n) * target_network(nth_states[done != 1]).max(dim=1)[0]
+    Q_n += (gamma ** n) * target_network(nth_states).max(dim=1)[0]
 
     if mask is not None:
         Q_t += mask
         Q_b += mask
 
-    return J_DQ(Q_b, Q_t) + l1*J_n() + l2*J_E(Q_t,is_demo,margin=margin) + l3*J_L2(target_network)
+    return J_DQ(Q_b, Q_TD) + \
+           l1*J_n(Q-b, Q_n) + \
+           l2*J_E(Q_t,is_demo,margin=margin) + \
+           l3*J_L2(target_network)
