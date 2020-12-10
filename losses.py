@@ -1,11 +1,52 @@
 import torch
+import torch.nn.functional as F
 
-def J_DQ():
-    "For Saber"
-    return 0
-    pass
 
-def J_N():
+def calcTD(self, sampleB):
+    '''
+    arguments:
+        sampleB: list
+            a list of random experiences from the replay memory.
+
+    returns:
+    '''
+
+    # to split and concatenate "state", "action", "reward", "next_state", "done"
+    # in separate lists
+    batch = self.experience(*zip(*sampleB))
+    stateB = torch.cat(batch.state)
+    actionB = torch.cat(batch.action)
+    rewardB = torch.cat(batch.reward)
+    next_stateB = torch.cat(batch.next_state)
+    doneB = torch.cat(batch.done)
+
+    # given a state s_t to the behavior network, compute Q(s_t)
+    # then we use it to calculate Q(s_t, a_t) according to a greedy policy
+    Q_behaviorB = self.behavior_net(stateB).gather(1, actionB)
+
+    # to compute the expected target Q-values
+    Q_targetB = rewardB
+    Q_targetB[doneB != 1] += self.gamma * \
+        self.target_net(next_stateB[doneB != 1]).max(1)[0].detach()
+
+    return Q_behaviorB, Q_targetB
+
+def J_DQ(Q_b, Q_t):
+    """
+    TD Loss: this function uses Huber loss function to calculate 
+    the loss between behavioral and target model outputs.
+    --------------------------------
+    Parameters
+      Q_b:                 (b,|A|) tensor of q-values from behavior model
+      Q_t:                 (b,|A|) tensor of q-values from target model
+
+    Returns
+      loss:                (1,) tensor of loss magnitude
+    """
+    return F.smooth_l1_loss(Q_b, Q_t, reduction='mean')
+
+
+def J_n(Q_b, ):
     "For Saber/Ryan"
     return 0
 
@@ -14,7 +55,7 @@ def J_E(Q_t, demo_action_tensor=None, margin=0.8):
     Large Margin Classification Loss
     --------------------------------
     Parameters
-      pred:                (b,|A|) tensor of q-values from model
+      Q_t:                 (b,|A|) tensor of q-values from model
       demo_action_tensor:  (b,|A|) 1-hot vector of expert action
       margin:              int of supervised loss margin
 
@@ -52,13 +93,20 @@ def J_Q(target_network,
         l1=1.0,
         l2=1.0,
         l3=1e-5,
-        margin=0.8, mask=None):
+        margin=0.8, 
+        mask=None,
+        gamma=0.999):
 
-    states, actions, rewards, is_demo, _  = samples
+    states, actions, rewards, n_states, done, is_demo  = samples
     Q_t = target_network(states[0],states[1])
     Q_b = behavior_network(states[0],states[1])
+
+    # to compute the TD target Q-values
+    Q_TD = rewards
+    Q_TD[done != 1] += gamma * target_network(n_states[done != 1]).max(dim=1)[0]
+
     if mask is not None:
         Q_t += mask
         Q_b += mask
 
-    return J_DQ() + l1*J_N() + l2*J_E(Q_t,is_demo,margin=margin) + l3*J_L2(target_network)
+    return J_DQ(Q_b, Q_t) + l1*J_n() + l2*J_E(Q_t,is_demo,margin=margin) + l3*J_L2(target_network)
