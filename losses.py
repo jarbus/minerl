@@ -33,8 +33,8 @@ def calcTD(self, sampleB):
 
 def J_DQ(Q_b, Q_TD):
     """
-    1-step TD Loss: this function uses Huber function to calculate 
-    the loss between Q-values from  the behavioral and 1-step TD values 
+    1-step TD Loss: this function uses Huber function to calculate
+    the loss between Q-values from  the behavioral and 1-step TD values
     from the target model outputs.
     --------------------------------
     Parameters
@@ -49,8 +49,8 @@ def J_DQ(Q_b, Q_TD):
 
 def J_n(Q_b, Q_n):
     """
-    n-step TD Loss: this function uses Huber function to calculate 
-    the loss between Q-values from  the behavioral and n-step TD values 
+    n-step TD Loss: this function uses Huber function to calculate
+    the loss between Q-values from  the behavioral and n-step TD values
     from the target model outputs.
     --------------------------------
     Parameters
@@ -105,13 +105,26 @@ def J_Q(target_network,
         l1=1.0,
         l2=1.0,
         l3=1e-5,
-        margin=0.8, 
+        margin=0.8,
         mask=None,
         gamma=0.999):
 
-    states, actions, rewards, next_states, n_step_rewards, nth_states, done, is_demo  = samples
-    Q_t = target_network(states[0],states[1])
-    Q_b = behavior_network(states[0],states[1])
+    for s in samples:
+        print(s.state[0].size(), s.state[1].size())
+    povs = torch.cat([s.state[0] for s in samples],dim=0)
+    print(povs.size())
+    feats = torch.cat([s.state[1] for s in samples],dim=0)
+    actions = torch.cat([s.action for s in samples],dim=0)
+    rewards = torch.cat([torch.tensor(s.reward[0]) for s in samples],dim=0)
+    next_states_pov = torch.cat([s.next_state[0] for s in samples],dim=0)
+    next_states_fov = torch.cat([s.next_state[1] for s in samples],dim=0)
+    dones = torch.cat([torch.tensor(s.done[0]) for s in samples],dim=0)
+    n_step_returns = torch.cat([torch.tensor(s.n_step_return) for s in samples],dim=0)
+    nth_states = torch.cat([s.state_tn for s in samples],dim=0)
+    is_demo = torch.cat([torch.tensor(s.is_demo[0]) for s in samples],dim=0)
+
+    Q_t = target_network(povs,feats)
+    Q_b = behavior_network(povs,feats)
 
     # to compute the 1-step TD Q-values from target model
     Q_TD = rewards

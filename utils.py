@@ -56,18 +56,18 @@ def Navigatev0_obs_to_tensor(obs: OrderedDict):
 
     """
 
-    pov = torch.tensor(obs["pov"], dtype=torch.float),
+    pov = torch.tensor(obs["pov"], dtype=torch.float)
     feats = torch.tensor(
             np.stack([obs["compassAngle"]/180.0, obs["inventory"]["dirt"]/10.0], axis=-1),
             dtype=torch.float)
 
     # Move channels into proper spot
     # (64,64,3) -> (3,64,64)
-    pov = torch.transpose(pov, 0, 2)
+    pov = torch.transpose(pov, 2, 4)
     # Turn into batch for PyTorch model processing
     # (1,64,64,3)
-    pov = pov.expand((1,) + pov.size())
-    feats = feats.expand((1,) + feats.size())
+    #pov = pov.expand((1,) + pov.size())
+    #feats = feats.expand((1,) + feats.size())
 
     return pov, feats
 
@@ -181,7 +181,7 @@ def action_tensor_to_Navigatev0(action_vec_torch, epsilon=0.01, evaluation=False
 
 
 
-class ReplayBuffer :
+class ReplayBuffer():
     # Note max size is currently max size of the buffer only, so it is possible
     #   that the length of a replay buffer (as gotten through len()) is larger
     #   than its max size
