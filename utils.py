@@ -62,12 +62,12 @@ def Navigatev0_obs_to_tensor(obs: OrderedDict):
             dtype=torch.float)
 
     # Move channels into proper spot
-    # (64,64,3) -> (3,64,64)
-    pov = torch.transpose(pov, 2, 4)
+    # (b,s,64,64,3) -> (b,s,3,64,64)
+    pov = torch.transpose(pov, -3, -1)
     # Turn into batch for PyTorch model processing
-    # (1,64,64,3)
-    #pov = pov.expand((1,) + pov.size())
-    #feats = feats.expand((1,) + feats.size())
+    # (b,s,3,64,64) -> (b*s,64,64,3)
+    pov = pov.reshape((-1,) + pov.size()[-3:])
+    feats = feats.reshape((1,2))
 
     return pov, feats
 
@@ -148,7 +148,7 @@ def action_tensor_to_Navigatev0(action_vec_torch, epsilon=0.01, evaluation=False
     # Constructs a one-hot action dict for stepping through the environment
 
     # Task parameter must be in range [1, 4]
-    action_vec = action_vec_torch.detach()
+    action_vec = action_vec_torch.detach().reshape((11,))
     action_dict = OrderedDict()
     action_dict["attack"] = 0
     action_dict["camera"] = np.zeros(2,dtype=np.int8)
@@ -166,7 +166,7 @@ def action_tensor_to_Navigatev0(action_vec_torch, epsilon=0.01, evaluation=False
     actions = TASK_ACTIONS[task]
 
     # Choose the best action from available actions
-    max_idx = max(((idx,action_vec_torch[idx]) for idx in actions),\
+    max_idx = max(((idx,action_vec[idx]) for idx in actions),\
                     key=lambda x:x[1])[0]
     if max_idx not in actions:
         print("wrong action selected:")
@@ -204,8 +204,8 @@ class ReplayBuffer():
 
             if i >= 0 and i < len(self.reserve) :
                 return self.reserve[i]
-            elif i >= 0 and i < len(self.buffer) :
-                return self.buffer[i]
+            elif i >= len(self.reserve) and i < len(self) :
+                return self.buffer[i-len(self.reserve)]
             else :
                 raise IndexError(f"Index {i} is out of bounds.")
         elif isinstance(i, slice) :

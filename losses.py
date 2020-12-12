@@ -44,7 +44,7 @@ def J_DQ(Q_b, Q_TD):
     Returns
       loss:                (1,) tensor of loss magnitude
     """
-    return F.smooth_l1_loss(Q_b, Q_t, reduction='mean')
+    return F.smooth_l1_loss(Q_b, Q_TD, reduction='mean')
 
 
 def J_n(Q_b, Q_n):
@@ -62,33 +62,30 @@ def J_n(Q_b, Q_n):
     """
     return F.smooth_l1_loss(Q_b, Q_n, reduction='mean')
 
-def J_E(Q_t, demo_action_tensor=None, margin=0.8):
+def J_E(Q_t, action_tensor, is_demo, margin=0.8):
     """
     Large Margin Classification Loss
     --------------------------------
     Parameters
       Q_t:                 (b,|A|) tensor of q-values from model
-      demo_action_tensor:  (b,|A|) 1-hot vector of expert action
+      action_tensor:       (b,|A|) 1-hot vector of actions taken
+      is_demo:             (b,1)   binary value indicating if expert action
       margin:              int of supervised loss margin
 
     Returns
       loss:                (1,) tensor of loss magnitude
     """
-    if not type(demo_action_tensor) or torch.sum(demo_action_tensor).item() == 0:
-        return 0
-
-    # max_a( Q(s,a) - l(s, a_e) ) - Q(s, a_e)
+    action_tensor = action_tensor.clone().detach().requires_grad_(False)
     # creates a (b, 1) tensor
-    loss = torch.max(Q_t + margin*demo_action_tensor,dim=1)[0]\
-            - torch.sum(Q_t * demo_action_tensor,dim=1)
+    loss, _ = torch.max(Q_t + margin*action_tensor,dim=1)
+    loss    = loss - torch.sum(Q_t * action_tensor,dim=1)
 
-    # (b,|A|) -> (b,1) indicating whether there is
-    # a demonstrator action in each row with a 1 or 0
-    is_demo = torch.sum(demo_action_tensor,dim=1)
+    denominator = torch.max(torch.ones(1),torch.sum(is_demo))
+
     # masks out losses for non-expert examples
+    print(loss,torch.sum(loss),is_demo, denominator)
     loss = is_demo * loss
-
-    return torch.sum(loss)/torch.sum(is_demo)
+    return torch.sum(loss)/denominator
 
 def J_L2(target_network):
     """
@@ -109,19 +106,17 @@ def J_Q(target_network,
         mask=None,
         gamma=0.999):
 
-    for s in samples:
-        print(s.state[0].size(), s.state[1].size())
     povs = torch.cat([s.state[0] for s in samples],dim=0)
-    print(povs.size())
     feats = torch.cat([s.state[1] for s in samples],dim=0)
     actions = torch.cat([s.action for s in samples],dim=0)
-    rewards = torch.cat([torch.tensor(s.reward[0]) for s in samples],dim=0)
+    rewards = torch.stack([s.reward for s in samples],dim=0)
     next_states_pov = torch.cat([s.next_state[0] for s in samples],dim=0)
-    next_states_fov = torch.cat([s.next_state[1] for s in samples],dim=0)
-    dones = torch.cat([torch.tensor(s.done[0]) for s in samples],dim=0)
-    n_step_returns = torch.cat([torch.tensor(s.n_step_return) for s in samples],dim=0)
-    nth_states = torch.cat([s.state_tn for s in samples],dim=0)
-    is_demo = torch.cat([torch.tensor(s.is_demo[0]) for s in samples],dim=0)
+    next_states_feats = torch.cat([s.next_state[1] for s in samples],dim=0)
+    dones = torch.stack([torch.tensor(s.done) for s in samples],dim=0)
+    n_step_returns = torch.stack([torch.tensor(s.n_step_return,dtype=torch.float32) for s in samples],dim=0)
+    nth_states_pov = torch.cat([s.state_tn[0] for s in samples],dim=0)
+    nth_states_feats = torch.cat([s.state_tn[1] for s in samples],dim=0)
+    is_demo = torch.stack([torch.tensor(s.is_demo,dtype=torch.float32) for s in samples],dim=0)
 
     Q_t = target_network(povs,feats)
     Q_b = behavior_network(povs,feats)
@@ -129,19 +124,19 @@ def J_Q(target_network,
     # to compute the 1-step TD Q-values from target model
     Q_TD = rewards
     # Q_TD[done != 1] += gamma * target_network(n_states[done != 1]).max(dim=1)[0]
-    Q_TD += gamma * target_network(next_states).max(dim=1)[0]
+    Q_TD += gamma * target_network(next_states_pov,next_states_feats).max(dim=1)[0]
 
     # to compute the n-step TD Q-values from target model
     n = 10
-    Q_n = n_step_rewards
+    Q_n = n_step_returns
     # Q_n[done != 1] += (gamma ** n) * target_network(nth_states[done != 1]).max(dim=1)[0]
-    Q_n += (gamma ** n) * target_network(nth_states).max(dim=1)[0]
+    Q_n += (gamma ** n) * target_network(nth_states_pov,nth_states_feats).max(dim=1)[0]
 
     if mask is not None:
-        Q_t += mask
-        Q_b += mask
-
-    return J_DQ(Q_b, Q_TD) + \
-           l1*J_n(Q_b, Q_n) + \
-           l2*J_E(Q_t,is_demo,margin=margin) + \
-           l3*J_L2(target_network)
+        Q_t *= mask
+        Q_b *= mask
+    j_dq = J_DQ(Q_b, Q_TD)
+    j_n  = l1*J_n(Q_b, Q_n)
+    j_e  = l2*J_E(Q_t,actions,is_demo,margin=margin)
+    j_l2 = l3*J_L2(target_network)
+    return j_dq + j_e + j_l2

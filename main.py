@@ -20,7 +20,8 @@ from train_loop import train
 LR = 0.001
 SEQ_LEN = 1
 BATCH_SIZE = 1
-BUFFER_SIZE = 1000
+BUFFER_SIZE = 100000
+PRE_TRAIN_STEPS = 1
 
 MODEL_PATH = "models/model.pt"
 parser = argparse.ArgumentParser()
@@ -44,13 +45,16 @@ for s, a, r, sp, d in data.batch_iter(
     idx = idx + 1
     state = Navigatev0_obs_to_tensor(s)
     state_prime = Navigatev0_obs_to_tensor(sp)
-    actions = Navigatev0_action_to_tensor(a,task=task)
+    actions = Navigatev0_action_to_tensor(a,task=task).reshape((-1,11))
 
-    replay_buffer.add(state, actions, r, state_prime, d,  None, None, torch.ones(1))
+    replay_buffer.add(state, actions, torch.tensor(r[0],dtype=torch.float32), state_prime, d,  0, state_prime, True)
 print("Done.")
 
 
-model = train(replay_buffer, task=task, batch_size=BATCH_SIZE)
+model = train(replay_buffer,\
+                task=task,\
+                batch_size=BATCH_SIZE,\
+                pre_train_steps=PRE_TRAIN_STEPS)
 
 # ########################
 # # TRAIN ON EXPERT DATA #

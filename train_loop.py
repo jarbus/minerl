@@ -2,6 +2,9 @@ from model import Model
 from losses import J_Q
 import utils
 from utils import *
+from tqdm import tqdm
+import gym
+import minerl
 
 # We multiply all actions not used for our task by 0
 # We do this by multiplying output vectors by zero
@@ -24,21 +27,25 @@ def train(replay_buffer,
     """
     print(f"Creating action masks for task {task}:")
     print(f"Actions allowed: {TASK_ACTIONS[task]}")
-    TRAINING_MASK = torch.full((batch_size,11), -float("Inf"))
-    ENV_MASK = torch.full((1,11),-float("Inf"))
+    TRAINING_MASK = torch.full((batch_size,11), 0.0)
+    ENV_MASK = torch.full((1,11),0.0)
     for a in TASK_ACTIONS[task]:
-        TRAINING_MASK[:,a] = 0.0
-        ENV_MASK[:,a] = 0.0
+        TRAINING_MASK[:,a] = 1.0
+        ENV_MASK[:,a] = 1.0
+
+    print("ENV_MASK",ENV_MASK)
+    print("TRAIN_MASK",TRAINING_MASK)
 
 
 
     behavior_network = Model()
     target_network = Model()
+    torch.autograd.set_detect_anomaly(True)
     optimizer = torch.optim.Adam(behavior_network.parameters(), lr=lr)
 
     # Pretraining
     print("Pre-training...")
-    for steps in range(pre_train_steps):
+    for steps in tqdm(range(pre_train_steps)):
         samples = replay_buffer.sample(batch_size)
         loss = J_Q(target_network, behavior_network, samples)
         loss.backward()
@@ -52,14 +59,14 @@ def train(replay_buffer,
     done = False
     net_reward = 0
     it = 0
-    for steps in range(num_iters):
+    for steps in tqdm(range(num_iters)):
 
         pov, feats = Navigatev0_obs_to_tensor(obs)
-        Q_b = behavior_network(pov, feats) + ENV_MASK
+        Q_b = behavior_network(pov, feats) * ENV_MASK
 
         # Turn action tensors into valid Minecraft actions
         # Perform action in Minecraft
-        action_dict = action_tensor_to_Navigatev0(outputs[0], evaluation=True, task=task)
+        action_dict = action_tensor_to_Navigatev0(Q_b, evaluation=True, task=task)
 
         obs, reward, done, info = env.step(action_dict)
         if done:
@@ -67,10 +74,10 @@ def train(replay_buffer,
             obs = env.reset()
 
 
-        state = Navigatev0_obs_to_tensor(s)
-        state_prime = Navigatev0_obs_to_tensor(sp)
-        actions = Navigatev0_action_to_tensor(a,task=task)
-        replay_buffer.add(state, actions, r, state_prime, d,  0, None, torch.ones(1))
+        state = Navigatev0_obs_to_tensor(obs)
+        state_prime = Navigatev0_obs_to_tensor(obs)
+        #actions = Navigatev0_action_to_tensor(action_dict,task=task)
+        replay_buffer.add(state, Q_b, torch.tensor(reward,dtype=torch.float32), state_prime, done,  0, state_prime, False)
 
         samples = replay_buffer.sample(batch_size)
         loss = J_Q(target_network, behavior_network, samples)
