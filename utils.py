@@ -56,18 +56,18 @@ def Navigatev0_obs_to_tensor(obs: OrderedDict):
 
     """
 
-    pov = torch.tensor(obs["pov"], dtype=torch.float),
+    pov = torch.tensor(obs["pov"], dtype=torch.float)
     feats = torch.tensor(
             np.stack([obs["compassAngle"]/180.0, obs["inventory"]["dirt"]/10.0], axis=-1),
             dtype=torch.float)
 
     # Move channels into proper spot
-    # (64,64,3) -> (3,64,64)
-    pov = torch.transpose(pov, 0, 2)
+    # (b,s,64,64,3) -> (b,s,3,64,64)
+    pov = torch.transpose(pov, -3, -1)
     # Turn into batch for PyTorch model processing
-    # (1,64,64,3)
-    pov = pov.expand((1,) + pov.size())
-    feats = feats.expand((1,) + feats.size())
+    # (b,s,3,64,64) -> (b*s,64,64,3)
+    pov = pov.reshape((-1,) + pov.size()[-3:])
+    feats = feats.reshape((1,2))
 
     return pov, feats
 
@@ -148,7 +148,7 @@ def action_tensor_to_Navigatev0(action_vec_torch, epsilon=0.01, evaluation=False
     # Constructs a one-hot action dict for stepping through the environment
 
     # Task parameter must be in range [1, 4]
-    action_vec = action_vec_torch.detach()
+    action_vec = action_vec_torch.detach().reshape((11,))
     action_dict = OrderedDict()
     action_dict["attack"] = 0
     action_dict["camera"] = np.zeros(2,dtype=np.int8)
@@ -166,7 +166,7 @@ def action_tensor_to_Navigatev0(action_vec_torch, epsilon=0.01, evaluation=False
     actions = TASK_ACTIONS[task]
 
     # Choose the best action from available actions
-    max_idx = max(((idx,action_vec_torch[idx]) for idx in actions),\
+    max_idx = max(((idx,action_vec[idx]) for idx in actions),\
                     key=lambda x:x[1])[0]
     if max_idx not in actions:
         print("wrong action selected:")
@@ -181,15 +181,53 @@ def action_tensor_to_Navigatev0(action_vec_torch, epsilon=0.01, evaluation=False
 
 
 
-class ReplayBuffer :
-    def __init__(self, max_size, seed=None) :
+class ReplayBuffer():
+    # Note max size is currently max size of the buffer only, so it is possible
+    #   that the length of a replay buffer (as gotten through len()) is larger
+    #   than its max size
+    def __init__(self, max_size) :
         self.max_size   = max_size
-        self.buffer     = deque(maxlen=max_size)
-        self.experience = namedtuple("Experience", ["state", "action", "reward", "next_state", "done"])
-        self.seed       = random.seed(seed)
+        self.buffer     = deque(maxlen=max_size)    # Stores sim data
+        self.reserve    = list()                    # Stores demo data
+        self.experience = namedtuple("Experience", ["state", "action", "reward", "next_state", "done", "n_step_return", "state_tn", "is_demo"])
 
-    def add(self, s, a, r, sp, d) :
-        self.buffer.append(self.experience(s, a, r, sp, d))
+    def __len__(self) :
+        return len(self.buffer) + len(self.reserve)
 
+    # Allows subscripting for get - note that there is no guarantee the nth
+    #   element remains the nth element after any operation
+    # The reserve data (demonstration data) comes before the sim data
+    def __getitem__(self, i) :
+        if isinstance(i, int) :
+            if i < 0 :      # Handle negative indices
+                i += len(self)
+
+            if i >= 0 and i < len(self.reserve) :
+                return self.reserve[i]
+            elif i >= len(self.reserve) and i < len(self) :
+                return self.buffer[i-len(self.reserve)]
+            else :
+                raise IndexError(f"Index {i} is out of bounds.")
+        elif isinstance(i, slice) :
+            start, stop, step = i.indices(len(self))
+            return [self[j] for j in range(start, stop, step)]
+        else :
+            raise TypeError(f"Invalid argument type: {type(i)}")
+
+    # Takes state, action, reward, next state, done, n step return, state t+n,
+    #   and is_demo
+    def add(self, s, a, r, sp, d, nsr, stn, i_d) :
+        exp = self.experience(s, a, r, sp, d, nsr, stn, i_d)
+        if i_d :
+            self.reserve.append(exp)
+        else :
+            self.buffer.append(exp)
+
+    # Takes int sample_size, returns list of sample_size named tuples randomly
+    #   selected from the sim and demo data
+    # See above for named elements of the tuples
     def sample(self, sample_size) :
-        return random.sample(self.buffer, sample_size)
+        if sample_size > len(self) :
+            raise Exception(f"Sample size {sample_size} larger than buffer (size {len(self)})")
+        indices = random.sample(range(len(self)), sample_size)
+        return [self[i] for i in indices]
