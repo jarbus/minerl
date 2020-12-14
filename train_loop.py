@@ -12,25 +12,55 @@ import minerl
 
 
 class n_step_episode():
-    # Note max size is currently max size of the buffer only, so it is possible
-    #   that the length of a replay buffer (as gotten through len()) is larger
-    #   than its max size
+    """
+    n-step TD: this calss is used to calculate the n-step return and
+    bootstrap (if needed) provided a sample tuple
+    --------------------------------
+    Parameters
+      n:                    int;
+                            number of steps before bootstrap in n-step TD
+      sample:               (5,) tuple;
+                            sample of the type ("state", "action", "reward",
+                            "next_state", "done")
+      is_demo:              bool;
+                            defines if the current sample is part of an episode
+      gamma:                float in range [0,1);
+                            the discount factor
+
+    Returns
+      episodSample:         (8,) tensor of loss magnitude
+                            sample of the type ("state", "action", "reward",
+                            "next_state", "done", "n_step_return", "state_tn", 
+                            "is_demo")
+    """
     def __init__(self, n=10) :
         self.n          = n
+        self.steps      = 0
         self.queue      = deque(maxlen=self.n)    
         self.experience = namedtuple("Experience", ["state", "action", \
           "reward", "next_state", "done", "n_step_return", "state_tn", "is_demo"])
 
-    def setup_n_step_tuple(self, samples, gamma=0.99):
-        discounts = torch.Tensor([gamma ** i for i in range(self.n)])
-        for sample in samples:
-            self.queue.append(sample)
-            if len(self.queue) == self.n:
-                # extract a vector of all rewards
-                n_step_reward = torch.vstack(list(self.queue))[:self.n - 1].reward 
-                n_step_return = torch.sum(discounts * n_step_reward)
+    def setup_n_step_tuple(self, sample, is_demo=False, gamma=0.99):
+        self.queue.append(sample)
+        self.steps += 1
+        # push the received samples into the queue until it is full
+        if not sample.done and self.steps >= self.n:
+            # extract a vector of all rewards
+            n_step_return = sum((gamma ** i) * s.reward \
+                for s,i in zip(self.queue, range(self.n)))
+            tup = self.experience(*self.queue.popleft(), \
+                n_step_return, self.queue[-1].state, is_demo)
+            yield tup
+
+        # if length of the episode or the remaining number of 
+        # samples in the queue are less than n-step then this part
+        # is executed 
+        if sample.done:
+            while self.queue:
+                n_step_return = sum((gamma ** i) * s.reward \
+                    for s,i in zip(self.queue, range(self.n)))
                 yield self.experience(*self.queue.popleft(), \
-                    n_step_return, self.queue[-1].state, True)
+                    n_step_return, None, is_demo)
 
 
 def train(replay_buffer,
