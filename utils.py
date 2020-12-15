@@ -185,11 +185,13 @@ class ReplayBuffer():
     # Note max size is currently max size of the buffer only, so it is possible
     #   that the length of a replay buffer (as gotten through len()) is larger
     #   than its max size
-    def __init__(self, max_size) :
+    def __init__(self, max_size, epsilon_a=0.001, epsilon_d=1.0) :
         self.max_size   = max_size
         self.buffer     = deque(maxlen=max_size)    # Stores sim data
         self.reserve    = list()                    # Stores demo data
-        self.experience = namedtuple("Experience", ["state", "action", "reward", "next_state", "done", "n_step_return", "state_tn", "is_demo"])
+        self.experience = namedtuple("Experience", ["state", "action", "reward", "next_state", "done", "n_step_return", "state_tn", "is_demo", "td_error"])
+        self.eps_a      = epsilon_a
+        self.eps_d      = epsilon_d
 
     def __len__(self) :
         return len(self.buffer) + len(self.reserve)
@@ -198,7 +200,7 @@ class ReplayBuffer():
     #   element remains the nth element after any operation
     # The reserve data (demonstration data) comes before the sim data
     def __getitem__(self, i) :
-        if isinstance(i, int) :
+        if isinstance(i, int) or isinstance(i, np.int64):
             if i < 0 :      # Handle negative indices
                 i += len(self)
 
@@ -214,20 +216,52 @@ class ReplayBuffer():
         else :
             raise TypeError(f"Invalid argument type: {type(i)}")
 
+
+    def __setitem__(self, i, val) :
+        if isinstance(i, int) or isinstance(i, np.int64):
+            if i < 0 :      # Handle negative indices
+                i += len(self)
+
+            if i >= 0 and i < len(self.reserve) :
+                self.reserve[i] = val
+            elif i >= len(self.reserve) and i < len(self) :
+                self.buffer[i-len(self.reserve)] = val
+            else :
+                raise IndexError(f"Index {i} is out of bounds.")
+        else :
+            raise TypeError(f"Invalid argument type: {type(i)}")
+
     # Takes state, action, reward, next state, done, n step return, state t+n,
     #   and is_demo
-    def add(self, s, a, r, sp, d, nsr, stn, i_d) :
-        exp = self.experience(s, a, r, sp, d, nsr, stn, i_d)
+    def add(self, s, a, r, sp, d, nsr, stn, i_d, td) :
+        exp = self.experience(s, a, r, sp, d, nsr, stn, i_d, td)
         if i_d :
             self.reserve.append(exp)
         else :
             self.buffer.append(exp)
 
+    # Takes list of indices, list of td errors, both same length
+    # Get list of indices from sample()
+    def update_td(self, indices, new_errors) :
+        assert(len(indices) == len(new_errors))
+        for i in range(len(indices)) :
+            self[indices[i]] = self[indices[i]]._replace(td_error=new_errors[i])
+
     # Takes int sample_size, returns list of sample_size named tuples randomly
     #   selected from the sim and demo data
     # See above for named elements of the tuples
+    # INDICES ONLY VALID UNTIL ADD CALLED
+    # MAKE SURE TO CALL update_td WITH INDICES AND NEW TD ERRORS
     def sample(self, sample_size) :
-        if sample_size > len(self) :
-            raise Exception(f"Sample size {sample_size} larger than buffer (size {len(self)})")
-        indices = random.sample(range(len(self)), sample_size)
-        return [self[i] for i in indices]
+        p_sum = sum([e.td_error for e in self.reserve]) + sum(e.td_error for e in self.buffer) + self.eps_d * len(self.reserve) + self.eps_a * len(self.buffer)
+        probs = []
+        if len(self.reserve) > 0 :
+            probs += [(e.td_error + self.eps_d)/p_sum for e in self.reserve]
+            print(p_sum)
+            print(probs[0])
+        if len(self.buffer) > 0 :
+            probs += [(e.td_error + self.eps_a)/p_sum for e in self.buffer]
+        print(probs)
+        indices = np.random.choice(len(self), size=sample_size, replace=False, p=probs)
+        # TODO this is terrible... at least it's only n additions, but...
+        return [self[i.astype(int)] for i in indices], indices, p_sum
