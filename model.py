@@ -33,14 +33,10 @@ class Model(nn.Module):
             nn.Linear(96, 50),
         )
         # Regularization layer
-        self.dropout = nn.Dropout(p=0.05)
         self.l1 = nn.Linear(50 + 2, 50)
         self.r1 = nn.LeakyReLU()
-        self.l2 = nn.Linear(50, 50)
-        self.r2 = nn.LeakyReLU()
         self.out = nn.Linear(50, 11)
-        # The following allows use to sample each sub-action
-        # from its own distribution
+        self.r2 = nn.ReLU()
 
     """Model to approximate Q values.
 
@@ -61,10 +57,7 @@ class Model(nn.Module):
     """
     def forward(self, pov, feats):
         pov = self.image_embed(pov)
-        dropout = self.dropout(torch.cat((pov, feats), dim=1))
-        full_embed = self.l1(dropout)
+        full_embed = self.l1(torch.cat((pov, feats), dim=1))
         full_embed = self.r1(full_embed)
-        full_embed = self.l2(full_embed)
-        full_embed = self.r2(full_embed)
         out        = self.out(full_embed)
-        return out
+        return self.r2(out)

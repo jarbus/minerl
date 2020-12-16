@@ -7,6 +7,8 @@ from losses import calcTD
 from tqdm import tqdm
 import gym
 import minerl
+import matplotlib.pyplot as plt
+from collections import Counter
 
 class n_step_episode():
     """
@@ -69,6 +71,7 @@ def train(replay_buffer,
         batch_size=32,
         tau=10000,
         pre_train_steps=10000,
+        path="",
         n=10,
         gamma=0.99,
         lr=0.01,
@@ -81,6 +84,10 @@ def train(replay_buffer,
 
 
     optimizer = torch.optim.Adam(behavior_network.parameters(), lr=lr, weight_decay=lambda3)
+    avg_td_errors = []
+    avg_loss = []
+    pre_train_qs = []
+    actions_taken = []
 
     # Pretraining
     print("Pre-training...")
@@ -90,9 +97,15 @@ def train(replay_buffer,
         # Importance Sampling and Priority Replay
         i_s_weights = torch.tensor([(n*p/p_sum)**(-beta0) for p in p_dist])
         i_s_weights = i_s_weights/torch.max(i_s_weights)
-        tds = calcTD(samples, behavior_network,target_network,mask,n=n,gamma=gamma)
+        i_s_weight_list = i_s_weights.tolist()
+        tds = torch.abs(calcTD(samples, behavior_network,target_network,mask,n=n,gamma=gamma))
         replay_buffer.update_td(indices, tds.tolist())
-        loss = torch.sum(i_s_weights * tds * J_Q(target_network, behavior_network, samples, mask=mask))
+        j_q, Q_t = J_Q(target_network, behavior_network, samples, mask=mask)
+        loss = torch.sum(i_s_weights * tds * j_q)
+        print(loss.item(),torch.sum(j_q).item())
+        avg_td_errors.append(tds.mean().item())
+        avg_loss.append(loss.item())
+        pre_train_qs.append(Q_t.max(dim=1)[0].mean().item())
 
         loss.backward()
         optimizer.step()
@@ -100,6 +113,29 @@ def train(replay_buffer,
             print("Updated target network")
             target_network.load_state_dict(behavior_network.state_dict())
     print("Pre-training Done.")
+    plt.title("Average Loss over time")
+    plt.xlabel("Pre-Training Steps")
+    plt.ylabel("Loss")
+    plt.plot(avg_loss)
+    plt.show()
+
+
+    plt.title("Average Q_t  over time")
+    plt.xlabel("Pre-Training Steps")
+    plt.ylabel("Q_t")
+    plt.plot(pre_train_qs)
+    plt.show()
+
+
+    plt.title("Average TD  over time")
+    plt.xlabel("Pre-Training Steps")
+    plt.ylabel("TD")
+    plt.plot(avg_td_errors)
+    plt.show()
+
+
+
+    torch.save(target_network.state_dict(), path)
 
 
     RawExp = namedtuple("RawExp", ["state", "action", "reward", "next_state","done"])
@@ -111,18 +147,28 @@ def train(replay_buffer,
     done = False
     net_reward = 0
     it = 0
+    reward_hist = []
+    running_reward_sum = 0
+    action_counter = []
+    Q_counter = []
     for steps in tqdm(range(num_iters)):
 
         pov, feats = Navigatev0_obs_to_tensor(obs)
         Q_b = behavior_network(pov, feats) * mask
+        action_counter.append(Q_b.max(dim=1)[1].item())
+        Q_counter.append(Q_b[Q_b != 0.0].max(dim=1)[0].item())
 
         # Turn action tensors into valid Minecraft actions
         # Perform action in Minecraft
         action_dict = action_tensor_to_Navigatev0(Q_b, evaluation=False,epsilon=eps_greedy, task=task)
 
         obs, reward, done, info = env.step(action_dict)
+        running_reward_sum += reward
+
         it += 1
         if done or it > max_ep_len:
+            reward_hist.append(running_reward_sum/it)
+            print(reward_hist[-1])
             it = 0
             print("Resetting environment")
             obs = env.reset()
@@ -133,10 +179,10 @@ def train(replay_buffer,
         state_prime = Navigatev0_obs_to_tensor(obs)
 
         rawexp = RawExp(state, Q_b, torch.tensor(reward,dtype=torch.float32), state_prime, done)
-        for exp in n_step_buffer.setup_n_step_tuple(rawexp, is_demo=True):
+        for exp in n_step_buffer.setup_n_step_tuple(rawexp, is_demo=False):
 
 
-            td = calcTD([exp], behavior_network,target_network,mask=mask,n=n,gamma=gamma)[0].item()
+            td = abs(calcTD([exp], behavior_network,target_network,mask=mask,n=n,gamma=gamma)[0].item()) + eps_a
             exp = exp._replace(td_error=td)
             replay_buffer.add(exp)
 
@@ -144,9 +190,8 @@ def train(replay_buffer,
         i_s_weights = torch.tensor([(n*p/p_sum)**(-beta0) for p in p_dist])
         i_s_weights = i_s_weights/torch.max(i_s_weights)
         tds = calcTD(samples, behavior_network,target_network,mask,n=n,gamma=gamma)
-        replay_buffer.update_td(indices, tds.tolist())
+        replay_buffer.update_td(indices, torch.abs(tds).tolist())
         loss = torch.sum(i_s_weights * tds * J_Q(target_network, behavior_network, samples, mask=mask))
-
 
 
         loss.backward()
@@ -154,4 +199,9 @@ def train(replay_buffer,
         if steps % tau == 0:
             print("Updated target network")
             target_network.load_state_dict(behavior_network.state_dict())
+            torch.save(target_network.state_dict(), path)
+
+    plt.title("Average Reward")
+    plt.plot(reward_hist)
+    plt.show()
     return behavior_network, target_network

@@ -15,14 +15,21 @@ def calcTD(samples, behavior_network, target_network, mask,n=10,gamma=0.9):
 
         states_pov = torch.cat([s.state[0] for s in samples],dim=0)
         states_feats = torch.cat([s.state[1] for s in samples],dim=0)
-        tn_states_pov = torch.cat([s.state_tn[0] for s in samples],dim=0)
-        tn_states_feats = torch.cat([s.state_tn[1] for s in samples],dim=0)
-        n_step_returns = torch.stack([s.n_step_return for s in samples],dim=0)
-        is_bootstrapped = torch.cat([s.is_bootstrapped for s in samples],dim=0)
-        actions = torch.max(target_network(tn_states_pov,tn_states_feats)*mask,dim=1)[0]
-        td = n_step_returns + (gamma**n * actions * is_bootstrapped)
-        td = td - torch.max(behavior_network(states_pov,states_feats),dim=1)[0]
-        return torch.abs(td)
+        # tn_states_pov = torch.cat([s.state_tn[0] for s in samples],dim=0)
+        # tn_states_feats = torch.cat([s.state_tn[1] for s in samples],dim=0)
+
+        next_states_pov = torch.cat([s.next_state[0] for s in samples],dim=0)
+        next_states_feats = torch.cat([s.next_state[1] for s in samples],dim=0)
+        #n_step_returns = torch.stack([s.n_step_return for s in samples],dim=0)
+        rewards = torch.stack([s.reward for s in samples],dim=0)
+        #is_bootstrapped = torch.cat([s.is_bootstrapped for s in samples],dim=0)
+        bootstrap = target_network(next_states_pov,next_states_feats)*mask
+        bootstrap = torch.max(bootstrap,dim=1)[0]
+
+        td = rewards + (gamma * bootstrap) #* is_bootstrapped)
+        Q = behavior_network(states_pov,states_feats)*mask
+        td = td - torch.max(Q,dim=1)[0]
+        return td
 
     # tds = []
     # for s in samples:
@@ -118,23 +125,23 @@ def J_Q(target_network,
     is_demo = torch.stack([torch.tensor(s.is_demo,dtype=torch.float32) for s in samples],dim=0)
     is_bootstrapped = torch.cat([s.is_bootstrapped for s in samples],dim=0)
 
-    Q_t = target_network(povs, feats)
-    Q_b = behavior_network(povs, feats)
+    Q_t = target_network(povs, feats) * mask
+    Q_b = behavior_network(povs, feats) * mask
+    Q_t1 = target_network(next_states_pov, next_states_feats) * mask
+    Q_tn = target_network(nth_states_pov, nth_states_feats) * mask
 
-    if mask is not None:
-        Q_t *= mask
-        Q_b *= mask
 
     # to compute the 1-step TD Q-values from target model
-    Q_TD = rewards + gamma * target_network(next_states_pov, next_states_feats).max(dim=1)[0]
+    Q_TD = rewards + gamma * Q_t1.max(dim=1)[0]
     # Q_TD[done != 1] += gamma * target_network(n_states[done != 1]).max(dim=1)[0]
 
     # to compute the n-step TD Q-values from target model
     n = 10
-    Q_n = n_step_returns + (gamma ** n) * target_network(nth_states_pov, nth_states_feats).max(dim=1)[0] * is_bootstrapped
+    Q_n = n_step_returns + (gamma ** n) * Q_tn.max(dim=1)[0] * is_bootstrapped
 
 
     j_dq = J_DQ(Q_b.max(dim=1)[0], Q_TD)
-    j_n  = J_n(Q_b.max(dim=1)[0], Q_n)
+    j_n  = l1 * J_n(Q_b.max(dim=1)[0], Q_n)
     j_e  = l2*J_E(Q_t,actions,is_demo,margin=margin)
-    return j_dq + (l1*j_n) + j_e
+    print(f"{j_dq.mean()} {j_n.mean()} {j_e.mean()}")
+    return j_dq + j_n + j_e, Q_t

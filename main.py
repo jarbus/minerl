@@ -18,18 +18,20 @@ from train_loop import train, n_step_episode
 
 
 
-
 LR = 0.001
 SEQ_LEN = 1
-BATCH_SIZE = 100
+BATCH_SIZE = 128
 N = 10
 GAMMA = 0.99
-BUFFER_SIZE = 40000
-PRE_TRAIN_STEPS = 10
+BUFFER_SIZE = 10000
+MAX_EP_LEN = 500
+TRAIN_STEPS = 5000
+PRE_TRAIN_STEPS = 500
+TAU=50
+
 EPS_GREEDY=0.01
 EPS_DEMO = 1.0
 EPS_AGENT = 0.001
-MAX_EP_LEN = 200
 
 MODEL_PATH = "models/model.pt"
 parser = argparse.ArgumentParser()
@@ -61,9 +63,13 @@ data = minerl.data.make("MineRLNavigateDense-v0")
 
 behavior_network = Model()
 target_network = Model()
-n_step_buffer = n_step_episode(N)
+if not args.train:
+    behavior_network.load_state_dict(torch.load(MODEL_PATH))
+    target_network.load_state_dict(torch.load(MODEL_PATH))
 
+n_step_buffer = n_step_episode(N)
 replay_buffer = ReplayBuffer(BUFFER_SIZE, epsilon_a=EPS_AGENT, epsilon_d=EPS_DEMO)
+
 print("Preloading...")
 idx = 0
 step = 0
@@ -77,8 +83,8 @@ for s, a, r, sp, d in tqdm(data.batch_iter(
         continue
     if d:
         step = 0
-    # Cap amount of demo data to half buffer size
-    if idx > BUFFER_SIZE / 2:
+    # Cap amount of demo data to third buffer size
+    if idx > BUFFER_SIZE / 3:
         break
     state = Navigatev0_obs_to_tensor(s)
     state_prime = Navigatev0_obs_to_tensor(sp)
@@ -89,7 +95,7 @@ for s, a, r, sp, d in tqdm(data.batch_iter(
     for exp in n_step_buffer.setup_n_step_tuple(rawexp, is_demo=True):
         # Compute initial TD error
 
-        td = calcTD([exp], behavior_network,target_network,mask=ENV_MASK,n=N,gamma=GAMMA)[0].item()
+        td = abs(calcTD([exp], behavior_network,target_network,mask=ENV_MASK,n=N,gamma=GAMMA)[0].item()) + EPS_DEMO
         exp = exp._replace(td_error=td)
         replay_buffer.add(exp)
 
@@ -104,8 +110,11 @@ model = train(replay_buffer,
               task=task,
               batch_size=BATCH_SIZE,
               pre_train_steps=PRE_TRAIN_STEPS,
+              num_iters=TRAIN_STEPS,
               lr=LR,
               n=N,
+              tau=TAU,
+              path=MODEL_PATH,
               gamma=GAMMA,
               eps_greedy=EPS_GREEDY,
               eps_demo=EPS_DEMO,
