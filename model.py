@@ -17,7 +17,7 @@ class Model(nn.Module):
         # Convolutional network architecture
         self.image_embed = nn.Sequential(
             nn.BatchNorm2d(3),
-            nn.Conv2d(3, 16, 5),
+            nn.Conv2d(3, 16, 5, stride=2),
             nn.MaxPool2d(2, 2),
             nn.LeakyReLU(True),
             nn.BatchNorm2d(16),
@@ -30,15 +30,15 @@ class Model(nn.Module):
             nn.LeakyReLU(True),
             nn.BatchNorm2d(24),
             nn.Flatten(),
-            nn.Linear(864, 100),
+            nn.Linear(96, 50),
         )
         # Regularization layer
         self.dropout = nn.Dropout(p=0.05)
-        self.l1 = nn.Linear(100 + 2, 200)
+        self.l1 = nn.Linear(50 + 2, 50)
         self.r1 = nn.LeakyReLU()
-        self.l2 = nn.Linear(200, 100)
+        self.l2 = nn.Linear(50, 50)
         self.r2 = nn.LeakyReLU()
-        self.out = nn.Linear(100, 11)
+        self.out = nn.Linear(50, 11)
         # The following allows use to sample each sub-action
         # from its own distribution
 

@@ -21,11 +21,11 @@ from train_loop import train, n_step_episode
 
 LR = 0.001
 SEQ_LEN = 1
-BATCH_SIZE = 256
+BATCH_SIZE = 100
 N = 10
 GAMMA = 0.99
 BUFFER_SIZE = 40000
-PRE_TRAIN_STEPS = 20000
+PRE_TRAIN_STEPS = 10
 EPS_GREEDY=0.01
 EPS_DEMO = 1.0
 EPS_AGENT = 0.001
@@ -38,6 +38,21 @@ parser.add_argument("--task",type=int,help="Specify task action space, 1-4", def
 args = parser.parse_args()
 
 task = args.task
+
+
+"""Create action masks.
+An action mask is a (batch_size,11) vector whose values
+are 0 for action indicies in the task and -inf otherwise.
+We can add actions by this mask to ignore actions
+not in our task.
+"""
+print(f"Creating action masks for task {task}:")
+print(f"Actions allowed: {TASK_ACTIONS[task]}")
+ENV_MASK = torch.full((1,11),0.0)
+for a in TASK_ACTIONS[task]:
+    ENV_MASK[:,a] = 1.0
+
+print("ENV_MASK",ENV_MASK)
 
 RawExp = namedtuple("RawExp", ["state", "action", "reward", "next_state","done"])
 
@@ -73,7 +88,8 @@ for s, a, r, sp, d in tqdm(data.batch_iter(
     rawexp = RawExp(state, actions, torch.tensor(r[0][0],dtype=torch.float32), state_prime, d)
     for exp in n_step_buffer.setup_n_step_tuple(rawexp, is_demo=True):
         # Compute initial TD error
-        td = calcTD([exp], behavior_network,target_network,n=N,gamma=GAMMA)[0]
+
+        td = calcTD([exp], behavior_network,target_network,mask=ENV_MASK,n=N,gamma=GAMMA)[0].item()
         exp = exp._replace(td_error=td)
         replay_buffer.add(exp)
 
@@ -84,6 +100,7 @@ print("Done.")
 model = train(replay_buffer,
               behavior_network,
               target_network,
+              ENV_MASK,
               task=task,
               batch_size=BATCH_SIZE,
               pre_train_steps=PRE_TRAIN_STEPS,

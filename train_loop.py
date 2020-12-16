@@ -44,7 +44,7 @@ class n_step_episode():
             n_step_return = sum((gamma ** i) * s.reward \
                 for s,i in zip(self.queue, range(self.n)))
             tup = Experience(*self.queue.popleft(), \
-                n_step_return, self.queue[-1].state, is_demo,None)
+                n_step_return, self.queue[-1].state, is_demo,None,torch.ones(1))
             yield tup
 
         # if length of the episode or the remaining number of
@@ -56,13 +56,14 @@ class n_step_episode():
                 n_step_return = sum((gamma ** i) * s.reward \
                     for s,i in zip(self.queue, range(self.n)))
                 yield Experience(*self.queue.popleft(), \
-                    n_step_return, (torch.zeros((1,3,64,64)), torch.zeros((1,2))), is_demo,None)
+                    n_step_return, (torch.zeros((1,3,64,64)), torch.zeros((1,2))), is_demo,None, torch.zeros(1))
             self.steps = 0
 
 
 def train(replay_buffer,
         behavior_network,
         target_network,
+        mask,
         task=1,
         num_iters=100000,
         batch_size=32,
@@ -75,25 +76,11 @@ def train(replay_buffer,
         eps_demo=1,
         eps_greedy=0.01,
         eps_agent=0.001,
+        lambda3=1e-5,
         beta0=0.6):
 
-    """Create action masks.
-    An action mask is a (batch_size,11) vector whose values
-    are 0 for action indicies in the task and -inf otherwise.
-    We can add actions by this mask to ignore actions
-    not in our task.
-    """
-    print(f"Creating action masks for task {task}:")
-    print(f"Actions allowed: {TASK_ACTIONS[task]}")
-    ENV_MASK = torch.full((1,11),0.0)
-    for a in TASK_ACTIONS[task]:
-        ENV_MASK[:,a] = 1.0
 
-    print("ENV_MASK",ENV_MASK)
-    #print("TRAIN_MASK",TRAINING_MASK)
-
-    torch.autograd.set_detect_anomaly(True)
-    optimizer = torch.optim.Adam(behavior_network.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(behavior_network.parameters(), lr=lr, weight_decay=lambda3)
 
     # Pretraining
     print("Pre-training...")
@@ -101,15 +88,11 @@ def train(replay_buffer,
 
         samples, indices, p_dist, p_sum = replay_buffer.sample(batch_size)
         # Importance Sampling and Priority Replay
-        i_s_weights = [(n*p/p_sum)**(-beta0) for p in p_dist]
-        max_i_s_weight = max(i_s_weights)
-        tds = calcTD(samples, behavior_network,target_network,n=n,gamma=gamma)
-        replay_buffer.update_td(indices, tds)
-
-        # Compute weighted loss per sample
-        loss = torch.zeros(1)
-        for sample, weight, td in zip(samples, i_s_weights, tds):
-            loss += (weight / max_i_s_weight) * td * J_Q(target_network, behavior_network, sample)
+        i_s_weights = torch.tensor([(n*p/p_sum)**(-beta0) for p in p_dist])
+        i_s_weights = i_s_weights/torch.max(i_s_weights)
+        tds = calcTD(samples, behavior_network,target_network,mask,n=n,gamma=gamma)
+        replay_buffer.update_td(indices, tds.tolist())
+        loss = torch.sum(i_s_weights * tds * J_Q(target_network, behavior_network, samples, mask=mask))
 
         loss.backward()
         optimizer.step()
@@ -131,7 +114,7 @@ def train(replay_buffer,
     for steps in tqdm(range(num_iters)):
 
         pov, feats = Navigatev0_obs_to_tensor(obs)
-        Q_b = behavior_network(pov, feats) * ENV_MASK
+        Q_b = behavior_network(pov, feats) * mask
 
         # Turn action tensors into valid Minecraft actions
         # Perform action in Minecraft
@@ -152,22 +135,17 @@ def train(replay_buffer,
         rawexp = RawExp(state, Q_b, torch.tensor(reward,dtype=torch.float32), state_prime, done)
         for exp in n_step_buffer.setup_n_step_tuple(rawexp, is_demo=True):
 
-            td = calcTD([exp], behavior_network,target_network,n=n,gamma=gamma)[0]
+
+            td = calcTD([exp], behavior_network,target_network,mask=mask,n=n,gamma=gamma)[0].item()
             exp = exp._replace(td_error=td)
             replay_buffer.add(exp)
 
-
-        samples, indices, p_dist, p_sum = replay_buffer.sample(batch_size)
         # Importance Sampling and Priority Replay
-        i_s_weights = [(n*p/p_sum)**(-beta0) for p in p_dist]
-        max_i_s_weight = max(i_s_weights)
-        tds = calcTD(samples, behavior_network,target_network,n=n,gamma=gamma)
-        replay_buffer.update_td(indices, tds)
-
-        # Compute weighted loss per sample
-        loss = torch.zeros(1)
-        for sample, weight, td in zip(samples, i_s_weights, tds):
-            loss += (weight / max_i_s_weight) * td * J_Q(target_network, behavior_network, sample)
+        i_s_weights = torch.tensor([(n*p/p_sum)**(-beta0) for p in p_dist])
+        i_s_weights = i_s_weights/torch.max(i_s_weights)
+        tds = calcTD(samples, behavior_network,target_network,mask,n=n,gamma=gamma)
+        replay_buffer.update_td(indices, tds.tolist())
+        loss = torch.sum(i_s_weights * tds * J_Q(target_network, behavior_network, samples, mask=mask))
 
 
 

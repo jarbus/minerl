@@ -19,7 +19,7 @@ TASK_ACTIONS = {
 }
 
 
-Experience = namedtuple("Experience", ["state", "action", "reward", "next_state", "done", "n_step_return", "state_tn", "is_demo", "td_error"])
+Experience = namedtuple("Experience", ["state", "action", "reward", "next_state", "done", "n_step_return", "state_tn", "is_demo", "td_error","is_bootstrapped"])
 
 # Shorthand to put sequences and batches on same axis
 def expand(tensor):
