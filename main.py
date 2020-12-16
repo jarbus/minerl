@@ -29,7 +29,7 @@ PRE_TRAIN_STEPS = 20000
 EPS_GREEDY=0.01
 EPS_DEMO = 1.0
 EPS_AGENT = 0.001
-MAX_EP_LEN = 500
+MAX_EP_LEN = 200
 
 MODEL_PATH = "models/model.pt"
 parser = argparse.ArgumentParser()
