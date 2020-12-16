@@ -73,6 +73,7 @@ def train(replay_buffer,
         lr=0.01,
         max_ep_len=1000,
         eps_demo=1,
+        eps_greedy=0.01,
         eps_agent=0.001,
         beta0=0.6):
 
@@ -134,7 +135,7 @@ def train(replay_buffer,
 
         # Turn action tensors into valid Minecraft actions
         # Perform action in Minecraft
-        action_dict = action_tensor_to_Navigatev0(Q_b, evaluation=True, task=task)
+        action_dict = action_tensor_to_Navigatev0(Q_b, evaluation=False,epsilon=eps_greedy, task=task)
 
         obs, reward, done, info = env.step(action_dict)
         it += 1

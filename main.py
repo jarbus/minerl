@@ -21,14 +21,15 @@ from train_loop import train, n_step_episode
 
 LR = 0.001
 SEQ_LEN = 1
-BATCH_SIZE = 10
+BATCH_SIZE = 256
 N = 10
 GAMMA = 0.99
-BUFFER_SIZE = 100
-PRE_TRAIN_STEPS = 100
+BUFFER_SIZE = 40000
+PRE_TRAIN_STEPS = 20000
+EPS_GREEDY=0.01
 EPS_DEMO = 1.0
 EPS_AGENT = 0.001
-MAX_EP_LEN = 1000
+MAX_EP_LEN = 500
 
 MODEL_PATH = "models/model.pt"
 parser = argparse.ArgumentParser()
@@ -89,6 +90,7 @@ model = train(replay_buffer,
               lr=LR,
               n=N,
               gamma=GAMMA,
+              eps_greedy=EPS_GREEDY,
               eps_demo=EPS_DEMO,
               eps_agent=EPS_AGENT,
               max_ep_len=MAX_EP_LEN)
