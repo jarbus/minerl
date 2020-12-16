@@ -18,6 +18,9 @@ TASK_ACTIONS = {
         4: {0,1,2,3,4,5,6,7,8,9,10}
 }
 
+
+Experience = namedtuple("Experience", ["state", "action", "reward", "next_state", "done", "n_step_return", "state_tn", "is_demo", "td_error"])
+
 # Shorthand to put sequences and batches on same axis
 def expand(tensor):
     tensor = torch.tensor(tensor)
@@ -166,7 +169,10 @@ def action_tensor_to_Navigatev0(action_vec_torch, epsilon=0.01, evaluation=False
     actions = TASK_ACTIONS[task]
 
     # Choose the best action from available actions
-    max_idx = max(((idx,action_vec[idx]) for idx in actions),\
+    if random.random() < epsilon:
+        max_idx = random.choice(list(actions))
+    else:
+        max_idx = max(((idx,action_vec[idx]) for idx in actions),\
                     key=lambda x:x[1])[0]
     if max_idx not in actions:
         print("wrong action selected:")
@@ -189,7 +195,7 @@ class ReplayBuffer():
         self.max_size   = max_size
         self.buffer     = deque(maxlen=max_size)    # Stores sim data
         self.reserve    = list()                    # Stores demo data
-        self.experience = namedtuple("Experience", ["state", "action", "reward", "next_state", "done", "n_step_return", "state_tn", "is_demo", "td_error"])
+        #self.experience = namedtuple("Experience", ["state", "action", "reward", "next_state", "done", "n_step_return", "state_tn", "is_demo", "td_error"])
         self.eps_a      = epsilon_a
         self.eps_d      = epsilon_d
 
@@ -233,9 +239,10 @@ class ReplayBuffer():
 
     # Takes state, action, reward, next state, done, n step return, state t+n,
     #   and is_demo
-    def add(self, s, a, r, sp, d, nsr, stn, i_d, td) :
-        exp = self.experience(s, a, r, sp, d, nsr, stn, i_d, td)
-        if i_d :
+    # def add(self, s, a, r, sp, d, nsr, stn, i_d, td) :
+    #     exp = Experience(s, a, r, sp, d, nsr, stn, i_d, td)
+    def add(self, exp: Experience):
+        if exp.is_demo:
             self.reserve.append(exp)
         else :
             self.buffer.append(exp)
@@ -257,11 +264,8 @@ class ReplayBuffer():
         probs = []
         if len(self.reserve) > 0 :
             probs += [(e.td_error + self.eps_d)/p_sum for e in self.reserve]
-            print(p_sum)
-            print(probs[0])
         if len(self.buffer) > 0 :
             probs += [(e.td_error + self.eps_a)/p_sum for e in self.buffer]
-        print(probs)
         indices = np.random.choice(len(self), size=sample_size, replace=False, p=probs)
         # TODO this is terrible... at least it's only n additions, but...
-        return [self[i.astype(int)] for i in indices], indices, p_sum
+        return [self[i.astype(int)] for i in indices], indices, [probs[i.astype(int)] for i in indices], p_sum
