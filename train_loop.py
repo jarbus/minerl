@@ -76,14 +76,16 @@ def train(replay_buffer,
         gamma=0.99,
         lr=0.01,
         max_ep_len=1000,
+        l1=1.0,
+        l2=1.0,
+        l3=1e-5,
         eps_demo=1,
         eps_greedy=0.01,
-        eps_agent=0.001,
-        lambda3=1e-5,
-        beta0=0.6):
+        eps_agent=0.01,
+        beta0=0.8):
 
 
-    optimizer = torch.optim.Adam(behavior_network.parameters(), lr=lr, weight_decay=lambda3)
+    optimizer = torch.optim.Adam(behavior_network.parameters(), lr=lr,weight_decay=l3)
     avg_td_errors = []
     avg_loss = []
     pre_train_qs = []
@@ -100,9 +102,8 @@ def train(replay_buffer,
         i_s_weight_list = i_s_weights.tolist()
         tds = torch.abs(calcTD(samples, behavior_network,target_network,mask,n=n,gamma=gamma))
         replay_buffer.update_td(indices, tds.tolist())
-        j_q, Q_t = J_Q(target_network, behavior_network, samples, mask=mask)
+        j_q, Q_t = J_Q(target_network, behavior_network, samples, mask=mask, l1=l1,l2=l2,l3=l3)
         loss = torch.sum(i_s_weights * tds * j_q)
-        print(loss.item(),torch.sum(j_q).item())
         avg_td_errors.append(tds.mean().item())
         avg_loss.append(loss.item())
         pre_train_qs.append(Q_t.max(dim=1)[0].mean().item())
@@ -154,9 +155,9 @@ def train(replay_buffer,
     for steps in tqdm(range(num_iters)):
 
         pov, feats = Navigatev0_obs_to_tensor(obs)
-        Q_b = behavior_network(pov, feats) * mask
+        Q_b = behavior_network(pov, feats)
         action_counter.append(Q_b.max(dim=1)[1].item())
-        Q_counter.append(Q_b[Q_b != 0.0].max(dim=1)[0].item())
+        Q_counter.append(Q_b[mask].max(dim=1)[0].item())
 
         # Turn action tensors into valid Minecraft actions
         # Perform action in Minecraft
@@ -191,7 +192,7 @@ def train(replay_buffer,
         i_s_weights = i_s_weights/torch.max(i_s_weights)
         tds = calcTD(samples, behavior_network,target_network,mask,n=n,gamma=gamma)
         replay_buffer.update_td(indices, torch.abs(tds).tolist())
-        loss = torch.sum(i_s_weights * tds * J_Q(target_network, behavior_network, samples, mask=mask))
+        loss = torch.sum(i_s_weights * tds * J_Q(target_network, behavior_network, samples, mask=mask,l1=l1,l2=l2,l3=l3)[0])
 
 
         loss.backward()

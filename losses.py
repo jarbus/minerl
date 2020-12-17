@@ -23,11 +23,17 @@ def calcTD(samples, behavior_network, target_network, mask,n=10,gamma=0.9):
         #n_step_returns = torch.stack([s.n_step_return for s in samples],dim=0)
         rewards = torch.stack([s.reward for s in samples],dim=0)
         #is_bootstrapped = torch.cat([s.is_bootstrapped for s in samples],dim=0)
-        bootstrap = target_network(next_states_pov,next_states_feats)*mask
+        num_actions = torch.sum(mask).item()
+        batch_size = len(samples)
+
+        # converts mask into batch mask
+        mask = (torch.ones(batch_size,11)*mask).bool()
+
+        bootstrap = target_network(next_states_pov,next_states_feats)[mask].reshape(batch_size,num_actions)
         bootstrap = torch.max(bootstrap,dim=1)[0]
 
         td = rewards + (gamma * bootstrap) #* is_bootstrapped)
-        Q = behavior_network(states_pov,states_feats)*mask
+        Q = behavior_network(states_pov,states_feats)[mask].reshape(batch_size,num_actions)
         td = td - torch.max(Q,dim=1)[0]
         return td
 
@@ -125,10 +131,16 @@ def J_Q(target_network,
     is_demo = torch.stack([torch.tensor(s.is_demo,dtype=torch.float32) for s in samples],dim=0)
     is_bootstrapped = torch.cat([s.is_bootstrapped for s in samples],dim=0)
 
-    Q_t = target_network(povs, feats) * mask
-    Q_b = behavior_network(povs, feats) * mask
-    Q_t1 = target_network(next_states_pov, next_states_feats) * mask
-    Q_tn = target_network(nth_states_pov, nth_states_feats) * mask
+
+    num_actions = torch.sum(mask).item()
+    batch_size = len(samples)
+    mask = (torch.ones(batch_size,11)*mask).bool()
+
+    Q_t = target_network(povs, feats)[mask].reshape(batch_size,num_actions)
+    Q_b = behavior_network(povs, feats)[mask].reshape(batch_size,num_actions)
+    Q_t1 = target_network(next_states_pov, next_states_feats)[mask].reshape(batch_size,num_actions)
+    Q_tn = target_network(nth_states_pov, nth_states_feats)[mask].reshape(batch_size,num_actions)
+    actions = actions[mask].reshape(batch_size,num_actions)
 
 
     # to compute the 1-step TD Q-values from target model
@@ -143,5 +155,11 @@ def J_Q(target_network,
     j_dq = J_DQ(Q_b.max(dim=1)[0], Q_TD)
     j_n  = l1 * J_n(Q_b.max(dim=1)[0], Q_n)
     j_e  = l2*J_E(Q_t,actions,is_demo,margin=margin)
-    print(f"{j_dq.mean()} {j_n.mean()} {j_e.mean()}")
-    return j_dq + j_n + j_e, Q_t
+    j_l   = l3 * J_L2(behavior_network)
+    #print("Qs")
+    #print(Q_TD.min(), Q_TD.max(), Q_n.min(), Q_n.max(), Q_b.max(dim=1)[0].min(),Q_b.max(dim=1)[0].max())
+    #print("Js")
+    loss =  j_e + j_l + j_dq + j_n +j_l
+    #print(f"{j_dq.mean().item()} {j_n.mean().item()} {j_e.mean().item()} {j_l.item()} {loss.mean().item()}")
+
+    return loss , Q_t

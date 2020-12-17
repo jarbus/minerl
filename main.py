@@ -20,14 +20,17 @@ from train_loop import train, n_step_episode
 
 LR = 0.001
 SEQ_LEN = 1
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 N = 10
 GAMMA = 0.99
-BUFFER_SIZE = 10000
+BUFFER_SIZE = 30000
 MAX_EP_LEN = 500
 TRAIN_STEPS = 5000
-PRE_TRAIN_STEPS = 500
-TAU=50
+PRE_TRAIN_STEPS = 2000
+TAU=PRE_TRAIN_STEPS/4
+LAMBDA1 = 2.0
+LAMBDA2 = 2.0
+LAMBDA3 = 0.1
 
 EPS_GREEDY=0.01
 EPS_DEMO = 1.0
@@ -50,9 +53,9 @@ not in our task.
 """
 print(f"Creating action masks for task {task}:")
 print(f"Actions allowed: {TASK_ACTIONS[task]}")
-ENV_MASK = torch.full((1,11),0.0)
+ENV_MASK = torch.full((1,11),False)
 for a in TASK_ACTIONS[task]:
-    ENV_MASK[:,a] = 1.0
+    ENV_MASK[:,a] = True
 
 print("ENV_MASK",ENV_MASK)
 
@@ -112,6 +115,9 @@ model = train(replay_buffer,
               pre_train_steps=PRE_TRAIN_STEPS,
               num_iters=TRAIN_STEPS,
               lr=LR,
+              l1=LAMBDA1,
+              l2=LAMBDA2,
+              l3=LAMBDA3,
               n=N,
               tau=TAU,
               path=MODEL_PATH,
