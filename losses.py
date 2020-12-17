@@ -156,10 +156,6 @@ def J_Q(target_network,
     j_n  = l1 * J_n(Q_b.max(dim=1)[0], Q_n)
     j_e  = l2*J_E(Q_t,actions,is_demo,margin=margin)
     j_l   = l3 * J_L2(behavior_network)
-    #print("Qs")
-    #print(Q_TD.min(), Q_TD.max(), Q_n.min(), Q_n.max(), Q_b.max(dim=1)[0].min(),Q_b.max(dim=1)[0].max())
-    #print("Js")
     loss =  j_e + j_l + j_dq + j_n +j_l
-    #print(f"{j_dq.mean().item()} {j_n.mean().item()} {j_e.mean().item()} {j_l.item()} {loss.mean().item()}")
 
-    return loss , Q_t
+    return loss , Q_b

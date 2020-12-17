@@ -96,17 +96,17 @@ def train(replay_buffer,
     for steps in tqdm(range(pre_train_steps)):
 
         samples, indices, p_dist, p_sum = replay_buffer.sample(batch_size)
-        # Importance Sampling and Priority Replay
+        # importance sampling and priority replay
         i_s_weights = torch.tensor([(n*p/p_sum)**(-beta0) for p in p_dist])
         i_s_weights = i_s_weights/torch.max(i_s_weights)
         i_s_weight_list = i_s_weights.tolist()
         tds = torch.abs(calcTD(samples, behavior_network,target_network,mask,n=n,gamma=gamma))
         replay_buffer.update_td(indices, tds.tolist())
-        j_q, Q_t = J_Q(target_network, behavior_network, samples, mask=mask, l1=l1,l2=l2,l3=l3)
+        j_q, q_b = J_Q(target_network, behavior_network, samples, mask=mask, l1=l1,l2=l2,l3=l3)
         loss = torch.sum(i_s_weights * tds * j_q)
         avg_td_errors.append(tds.mean().item())
         avg_loss.append(loss.item())
-        pre_train_qs.append(Q_t.max(dim=1)[0].mean().item())
+        pre_train_qs.append(q_b.max(dim=1)[0].mean().item())
 
         loss.backward()
         optimizer.step()
@@ -121,9 +121,9 @@ def train(replay_buffer,
     plt.show()
 
 
-    plt.title("Average Q_t  over time")
+    plt.title("Average Q_b  over time")
     plt.xlabel("Pre-Training Steps")
-    plt.ylabel("Q_t")
+    plt.ylabel("Q_b")
     plt.plot(pre_train_qs)
     plt.show()
 
@@ -149,15 +149,17 @@ def train(replay_buffer,
     net_reward = 0
     it = 0
     reward_hist = []
+
+    avg_td_errors = []
+    avg_loss = []
+    pre_train_qs = []
+    actions_taken = []
     running_reward_sum = 0
-    action_counter = []
-    Q_counter = []
+
     for steps in tqdm(range(num_iters)):
 
         pov, feats = Navigatev0_obs_to_tensor(obs)
         Q_b = behavior_network(pov, feats)
-        action_counter.append(Q_b.max(dim=1)[1].item())
-        Q_counter.append(Q_b[mask].max(dim=1)[0].item())
 
         # Turn action tensors into valid Minecraft actions
         # Perform action in Minecraft
@@ -169,6 +171,7 @@ def train(replay_buffer,
         it += 1
         if done or it > max_ep_len:
             reward_hist.append(running_reward_sum/it)
+            running_reward_sum = 0
             print(reward_hist[-1])
             it = 0
             print("Resetting environment")
@@ -183,16 +186,21 @@ def train(replay_buffer,
         for exp in n_step_buffer.setup_n_step_tuple(rawexp, is_demo=False):
 
 
-            td = abs(calcTD([exp], behavior_network,target_network,mask=mask,n=n,gamma=gamma)[0].item()) + eps_a
+            td = abs(calcTD([exp], behavior_network,target_network,mask=mask,n=n,gamma=gamma)[0].item()) + eps_agent
             exp = exp._replace(td_error=td)
             replay_buffer.add(exp)
 
         # Importance Sampling and Priority Replay
         i_s_weights = torch.tensor([(n*p/p_sum)**(-beta0) for p in p_dist])
         i_s_weights = i_s_weights/torch.max(i_s_weights)
-        tds = calcTD(samples, behavior_network,target_network,mask,n=n,gamma=gamma)
-        replay_buffer.update_td(indices, torch.abs(tds).tolist())
-        loss = torch.sum(i_s_weights * tds * J_Q(target_network, behavior_network, samples, mask=mask,l1=l1,l2=l2,l3=l3)[0])
+        tds = torch.abs(calcTD(samples, behavior_network,target_network,mask,n=n,gamma=gamma))
+        replay_buffer.update_td(indices, tds.tolist())
+
+        j_q, q_b = J_Q(target_network, behavior_network, samples, mask=mask, l1=l1,l2=l2,l3=l3)
+        loss = torch.sum(i_s_weights * tds * j_q)
+        avg_td_errors.append(tds.mean().item())
+        avg_loss.append(loss.item())
+        pre_train_qs.append(q_b.max(dim=1)[0].mean().item())
 
 
         loss.backward()
@@ -201,6 +209,19 @@ def train(replay_buffer,
             print("Updated target network")
             target_network.load_state_dict(behavior_network.state_dict())
             torch.save(target_network.state_dict(), path)
+
+    plt.title("Average Loss over time")
+    plt.xlabel("Training Steps")
+    plt.ylabel("Loss")
+    plt.plot(avg_loss)
+    plt.show()
+
+
+    plt.title("Average Q_b  over time")
+    plt.xlabel("Training Steps")
+    plt.ylabel("Q_b")
+    plt.plot(pre_train_qs)
+    plt.show()
 
     plt.title("Average Reward")
     plt.plot(reward_hist)

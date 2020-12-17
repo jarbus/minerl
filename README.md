@@ -12,7 +12,7 @@ Get the dataset (60GB) and install in data/: [https://minerl.io/dataset/](https:
 # Usage
 
 To run a training loop, then evaluate:
-`python train.py`
+`python main.py --train`
 
 # Action Space
 
