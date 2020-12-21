@@ -1,11 +1,10 @@
 # MineRL Training Code
 
-Code for a [MineRL](https://minerl.io) agent.
+Code for a [MineRL](https://minerl.io) agent. Runs on Arch Linux, Python 3.8.5.
 
 # Installation
 
-`pip install gym`
-`pip install minerl`
+`pip install -r requirements.txt`
 
 Get the dataset (60GB) and install in data/: [https://minerl.io/dataset/](https://minerl.io/dataset/)
 
