@@ -7,10 +7,10 @@ from collections import OrderedDict, namedtuple, deque
 
 from pdb import set_trace as T
 
-CAMERA_OPTIONS = torch.tensor([[0,-10],
-                    [0,10],
-                    [-10.0, 0.0],
-                    [10.0,0.0]])
+CAMERA_OPTIONS = torch.tensor([[0,-1],
+                    [0,1],
+                    [-1.0, 0.0],
+                    [1.0,0.0]])
 TASK_ACTIONS = {
         1: {0, 1, 10},
         2: {0, 1, 8,9,10},
@@ -104,27 +104,27 @@ def Navigatev0_action_to_tensor(act: OrderedDict, task=1):
             task_acts = TASK_ACTIONS[task]
 
             # Set camera left
-            if c[b,s][0] < -10 and abs(c[b,s][0]) >= abs(c[b,s][1]):
+            if c[b,s][0] < -1 and abs(c[b,s][0]) >= abs(c[b,s][1]):
                 out[b,s][0] = 1
             # Set camera right
-            elif c[b,s][0] > 10 and abs(c[b,s][0]) >= abs(c[b,s][1]):
+            elif c[b,s][0] > 1 and abs(c[b,s][0]) >= abs(c[b,s][1]):
                 out[b,s][1] = 1
             # Set camera up
-            elif 2 in task_acts and c[b,s][1] < -10 and abs(c[b,s][1]) >= abs(c[b,s][0]):
+            elif 2 in task_acts and c[b,s][1] < -1 and abs(c[b,s][1]) >= abs(c[b,s][0]):
                 out[b,s][2] = 1
-            elif 3 in task_acts and c[b,s][1] > 10 and abs(c[b,s][1]) >= abs(c[b,s][0]):
+            elif 3 in task_acts and c[b,s][1] > 1 and abs(c[b,s][1]) >= abs(c[b,s][0]):
                 out[b,s][3] = 1
-            elif PLACE_OPTIONS[act["place"][b,s]] == 1:
+            elif (4 in task_acts or 5 in task_acts) and PLACE_OPTIONS[act["place"][b,s]] == 1:
                 if 4 in task_acts and act["jump"][b,s] == 1:
                     out[b,s][4] = 1
                 elif 5 in task_acts:
                     out[b,s][5] = 1
-            elif act["attack"][b,s] == 1:
+            elif (6 in task_acts or 7 in task_acts) and act["attack"][b,s] == 1:
                 if 6 in task_acts and act["forward"][b,s] == 1:
                     out[b,s][6] = 1
                 elif 7 in task_acts:
                     out[b,s][7] = 1
-            elif act["jump"][b,s] == 1:
+            elif (8 in task_acts or 9 in task_acts) and act["jump"][b,s] == 1:
                 if 8 in task_acts and act["forward"][b,s] == 1:
                     out[b,s][8] = 1
                 elif 9 in task_acts:
@@ -135,10 +135,10 @@ def Navigatev0_action_to_tensor(act: OrderedDict, task=1):
     return out
 
 index_to_actions = {
-        0: np.array([0,-10]),
-        1: np.array([0,10]),
-        2: np.array([-10,0]),
-        3: np.array([10,0]),
+        0: np.array([0,-1]),
+        1: np.array([0,1]),
+        2: np.array([-1,0]),
+        3: np.array([1,0]),
         4: ["place","jump"],
         5: ["place"],
         6: ["forward","attack"],

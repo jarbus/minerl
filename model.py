@@ -33,7 +33,7 @@ class Model(nn.Module):
             nn.Linear(96, 50),
         )
         # Regularization layer
-        self.l1 = nn.Linear(50 + 2, 50)
+        self.l1 = nn.Linear(50 + 2, 11)
         self.r1 = nn.LeakyReLU()
         self.out = nn.Linear(50, 11)
 
@@ -56,7 +56,8 @@ class Model(nn.Module):
     """
     def forward(self, pov, feats):
         pov = self.image_embed(pov)
-        full_embed = self.l1(torch.cat((pov, feats), dim=1))
-        full_embed = self.r1(full_embed)
-        out        = self.out(full_embed)
-        return out
+        return self.l1(torch.cat((pov,feats),dim=1))
+        #full_embed = self.l1(torch.cat((pov, feats), dim=1))
+        #full_embed = self.r1(full_embed)
+        #out        = self.out(full_embed)
+        #return out

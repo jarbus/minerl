@@ -85,7 +85,7 @@ def train(replay_buffer,
         beta0=0.8):
 
 
-    optimizer = torch.optim.Adam(behavior_network.parameters(), lr=lr,weight_decay=l3)
+    optimizer = torch.optim.Adam(behavior_network.parameters(), lr=lr)
     avg_td_errors = []
     avg_loss = []
     pre_train_qs = []
@@ -97,14 +97,14 @@ def train(replay_buffer,
 
         samples, indices, p_dist, p_sum = replay_buffer.sample(batch_size)
         # importance sampling and priority replay
-        i_s_weights = torch.tensor([(n*p/p_sum)**(-beta0) for p in p_dist])
-        i_s_weights = i_s_weights/torch.max(i_s_weights)
-        i_s_weight_list = i_s_weights.tolist()
-        tds = torch.abs(calcTD(samples, behavior_network,target_network,mask,n=n,gamma=gamma))
-        replay_buffer.update_td(indices, tds.tolist())
+        #i_s_weights = torch.tensor([(n*p/p_sum)**(-beta0) for p in p_dist])
+        #i_s_weights = i_s_weights/torch.max(i_s_weights)
+        #i_s_weight_list = i_s_weights.tolist()
+        #tds = torch.abs(calcTD(samples, behavior_network,target_network,mask,n=n,gamma=gamma))
+        #replay_buffer.update_td(indices, tds.tolist())
         j_q, q_b = J_Q(target_network, behavior_network, samples, mask=mask, l1=l1,l2=l2,l3=l3)
-        loss = torch.sum(i_s_weights * tds * j_q)
-        avg_td_errors.append(tds.mean().item())
+        loss = torch.sum(j_q)
+        #avg_td_errors.append(tds.mean().item())
         avg_loss.append(loss.item())
         pre_train_qs.append(q_b.max(dim=1)[0].mean().item())
 
@@ -128,11 +128,11 @@ def train(replay_buffer,
     plt.show()
 
 
-    plt.title("Average TD  over time")
-    plt.xlabel("Pre-Training Steps")
-    plt.ylabel("TD")
-    plt.plot(avg_td_errors)
-    plt.show()
+    #plt.title("Average TD  over time")
+    #plt.xlabel("Pre-Training Steps")
+    #plt.ylabel("TD")
+    #plt.plot(avg_td_errors)
+    #plt.show()
 
 
 
@@ -186,19 +186,19 @@ def train(replay_buffer,
         for exp in n_step_buffer.setup_n_step_tuple(rawexp, is_demo=False):
 
 
-            td = abs(calcTD([exp], behavior_network,target_network,mask=mask,n=n,gamma=gamma)[0].item()) + eps_agent
-            exp = exp._replace(td_error=td)
+            #td = abs(calcTD([exp], behavior_network,target_network,mask=mask,n=n,gamma=gamma)[0].item()) + eps_agent
+            exp = exp._replace(td_error=1)
             replay_buffer.add(exp)
 
-        # Importance Sampling and Priority Replay
-        i_s_weights = torch.tensor([(n*p/p_sum)**(-beta0) for p in p_dist])
-        i_s_weights = i_s_weights/torch.max(i_s_weights)
-        tds = torch.abs(calcTD(samples, behavior_network,target_network,mask,n=n,gamma=gamma))
-        replay_buffer.update_td(indices, tds.tolist())
+        ## Importance Sampling and Priority Replay
+        #i_s_weights = torch.tensor([(n*p/p_sum)**(-beta0) for p in p_dist])
+        #i_s_weights = i_s_weights/torch.max(i_s_weights)
+        #tds = torch.abs(calcTD(samples, behavior_network,target_network,mask,n=n,gamma=gamma))
+        #replay_buffer.update_td(indices, tds.tolist())
 
         j_q, q_b = J_Q(target_network, behavior_network, samples, mask=mask, l1=l1,l2=l2,l3=l3)
-        loss = torch.sum(i_s_weights * tds * j_q)
-        avg_td_errors.append(tds.mean().item())
+        loss = torch.mean(j_q)
+        #avg_td_errors.append(tds.mean().item())
         avg_loss.append(loss.item())
         pre_train_qs.append(q_b.max(dim=1)[0].mean().item())
 

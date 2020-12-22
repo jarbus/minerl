@@ -144,18 +144,18 @@ def J_Q(target_network,
 
 
     # to compute the 1-step TD Q-values from target model
-    Q_TD = rewards + gamma * Q_t1.max(dim=1)[0]
-    # Q_TD[done != 1] += gamma * target_network(n_states[done != 1]).max(dim=1)[0]
+    with torch.no_grad():
+        Q_TD = rewards + gamma * Q_t1.max(dim=1)[0]
 
     # to compute the n-step TD Q-values from target model
-    n = 10
-    Q_n = n_step_returns + (gamma ** n) * Q_tn.max(dim=1)[0] * is_bootstrapped
+        n = 10
+        Q_n = n_step_returns + (gamma ** n) * Q_tn.max(dim=1)[0] * is_bootstrapped
 
 
     j_dq = J_DQ(Q_b.max(dim=1)[0], Q_TD)
     j_n  = l1 * J_n(Q_b.max(dim=1)[0], Q_n)
-    j_e  = l2*J_E(Q_t,actions,is_demo,margin=margin)
+    j_e  = l2*J_E(Q_b,actions,is_demo,margin=margin)
     j_l   = l3 * J_L2(behavior_network)
-    loss =  j_e + j_l + j_dq + j_n +j_l
+    loss =  j_dq + j_e + j_l j_n
 
     return loss , Q_b

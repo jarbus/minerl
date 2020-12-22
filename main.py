@@ -18,16 +18,16 @@ from train_loop import train, n_step_episode
 
 
 
-LR = 0.001
+LR = 0.0001
 SEQ_LEN = 1
 BATCH_SIZE = 32
 N = 10
 GAMMA = 0.99
 BUFFER_SIZE = 30000
 MAX_EP_LEN = 200
-TRAIN_STEPS = 20000
+TRAIN_STEPS = 2000
 PRE_TRAIN_STEPS = 10000
-TAU=PRE_TRAIN_STEPS/4
+TAU=2000
 LAMBDA1 = 2.0
 LAMBDA2 = 2.0
 LAMBDA3 = 0.1
@@ -92,14 +92,15 @@ for s, a, r, sp, d in tqdm(data.batch_iter(
     state = Navigatev0_obs_to_tensor(s)
     state_prime = Navigatev0_obs_to_tensor(sp)
     actions = Navigatev0_action_to_tensor(a,task=task).reshape((-1,11))
+    if torch.sum(actions).item() == 0.0:
+        continue
 
     # Load demo data into replay buffer with 0 TD error to start
     rawexp = RawExp(state, actions, torch.tensor(r[0][0],dtype=torch.float32), state_prime, d)
     for exp in n_step_buffer.setup_n_step_tuple(rawexp, is_demo=True):
         # Compute initial TD error
-
-        td = abs(calcTD([exp], behavior_network,target_network,mask=ENV_MASK,n=N,gamma=GAMMA)[0].item()) + EPS_DEMO
-        exp = exp._replace(td_error=td)
+        #td = abs(calcTD([exp], behavior_network,target_network,mask=ENV_MASK,n=N,gamma=GAMMA)[0].item()) + EPS_DEMO
+        exp = exp._replace(td_error=1)
         replay_buffer.add(exp)
 
 
